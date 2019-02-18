@@ -17,10 +17,9 @@
  */
 package org.apache.ambari.server.controller.metrics;
 
-import static org.apache.ambari.server.controller.metrics.MetricsServiceProvider.MetricsService;
-
 import java.util.Optional;
 
+import org.apache.ambari.server.controller.metrics.MetricsServiceProvider.MetricsService;
 import org.apache.ambari.server.controller.spi.SystemException;
 
 public interface MetricHostProvider {
@@ -85,4 +84,16 @@ public interface MetricHostProvider {
   default Optional<String> getExternalHostName(String clusterName, String componentName) {
     return Optional.empty();
   }
+
+
+  /**
+   * Is the collector host external to the cluster?
+   *
+   * @param clusterName the cluster name
+   *
+   * @return true if metrics server component is NOT in this cluster
+   *
+   */
+  public boolean isCollectorHostExternal(String clusterName);
+
 }

@@ -28,6 +28,8 @@ import java.util.Set;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.security.credential.PrincipalKeyCredential;
+import org.apache.ambari.server.utils.HTTPUtils;
+import org.apache.ambari.server.utils.HostAndPort;
 import org.apache.ambari.server.utils.ShellCommandUtil;
 import org.apache.commons.collections.MapUtils;
 import org.apache.directory.server.kerberos.shared.keytab.Keytab;
@@ -48,6 +50,11 @@ abstract class KDCKerberosOperationHandler extends KerberosOperationHandler {
    * The FQDN of the host where KDC administration server is
    */
   private String adminServerHost = null;
+
+  /**
+   * The FQDN and port where KDC administration server is
+   */
+  private String adminServerHostAndPort = null;
 
   /**
    * A map of principal names to {@link Keytab} entries to ensure a Keyab file is not created/exported
@@ -83,13 +90,28 @@ abstract class KDCKerberosOperationHandler extends KerberosOperationHandler {
     super.open(administratorCredentials, realm, kerberosConfiguration);
 
     if (kerberosConfiguration != null) {
-      adminServerHost = kerberosConfiguration.get(KERBEROS_ENV_ADMIN_SERVER_HOST);
+      // Spit the host and port from the the admin_server_host value
+      String value = kerberosConfiguration.get(KERBEROS_ENV_ADMIN_SERVER_HOST);
+      HostAndPort hostAndPort = HTTPUtils.getHostAndPortFromProperty(value);
+
+      // hostAndPort will be null if the value is not in the form of host:port
+      if (hostAndPort == null) {
+        // host-only and host and port values are the same since there is no port
+        // both are equal to the value from the property
+        adminServerHost = value;
+        adminServerHostAndPort = value;
+      } else {
+        // host-only is the split value;
+        // host and port value is the value from the property
+        adminServerHost = hostAndPort.host;
+        adminServerHostAndPort = value;
+      }
     }
 
     // Pre-determine the paths to relevant Kerberos executables
     executableKinit = getExecutable("kinit");
 
-    setOpen(init());
+    setOpen(init(kerberosConfiguration));
   }
 
   @Override
@@ -106,6 +128,7 @@ abstract class KDCKerberosOperationHandler extends KerberosOperationHandler {
     executableKinit = null;
     cachedKeytabs = null;
     adminServerHost = null;
+    adminServerHostAndPort = null;
 
     super.close();
   }
@@ -225,8 +248,14 @@ abstract class KDCKerberosOperationHandler extends KerberosOperationHandler {
     return super.executeCommand(command, _envp, interactiveHandler);
   }
 
-  String getAdminServerHost() {
-    return adminServerHost;
+  /**
+   * Returns the KDC administration server host value (with or without the port)
+   *
+   * @param includePort <code>true</code> to include the port (if available); <code>false</code> to exclude the port
+   * @return the KDC administration server host value (with or without the port)
+   */
+  String getAdminServerHost(boolean includePort) {
+    return (includePort) ? adminServerHostAndPort : adminServerHost;
   }
 
   String getCredentialCacheFilePath() {
@@ -240,9 +269,11 @@ abstract class KDCKerberosOperationHandler extends KerberosOperationHandler {
    * @param executableKinit  the absolute path to the kinit executable
    * @param credentials      the KDC adminisrator's credentials
    * @param credentialsCache the absolute path to the expected location of the Kerberos ticket/credential cache file
+   * @param kerberosConfigurations  a Map of key/value pairs containing data from the kerberos-env configuration set
+   * @throws KerberosOperationException in case there was any error during kinit command creation
    * @return an array of Strings containing the command to execute
    */
-  protected abstract String[] getKinitCommand(String executableKinit, PrincipalKeyCredential credentials, String credentialsCache);
+  protected abstract String[] getKinitCommand(String executableKinit, PrincipalKeyCredential credentials, String credentialsCache, Map<String, String> kerberosConfigurations) throws KerberosOperationException;
 
   /**
    * Export the requested keytab entries for a given principal into the specified file.
@@ -265,7 +296,7 @@ abstract class KDCKerberosOperationHandler extends KerberosOperationHandler {
    * @return
    * @throws KerberosOperationException
    */
-  protected boolean init() throws KerberosOperationException {
+  protected boolean init(Map<String, String> kerberosConfiguration) throws KerberosOperationException {
     if (credentialsCacheFile != null) {
       if (!credentialsCacheFile.delete()) {
         LOG.debug("Failed to remove the orphaned cache file, {}", credentialsCacheFile.getAbsolutePath());
@@ -288,7 +319,7 @@ abstract class KDCKerberosOperationHandler extends KerberosOperationHandler {
 
     PrincipalKeyCredential credentials = getAdministratorCredential();
 
-    ShellCommandUtil.Result result = executeCommand(getKinitCommand(executableKinit, credentials, credentialsCache),
+    ShellCommandUtil.Result result = executeCommand(getKinitCommand(executableKinit, credentials, credentialsCache, kerberosConfiguration),
         environmentMap,
         new InteractivePasswordHandler(String.valueOf(credentials.getKey()), null));
 

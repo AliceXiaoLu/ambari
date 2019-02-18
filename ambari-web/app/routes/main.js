@@ -51,7 +51,7 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
                     });
                   } else {
                     // Don't transit to Views when user already on View page
-                    if (App.router.currentState.name !== 'viewDetails') {
+                    if (App.router.currentState.name !== 'viewDetails' && App.router.currentState.name !== 'shortViewDetails') {
                       App.router.transitionTo('main.views.index');
                     }
                     clusterController.set('isLoaded', true); // hide loading bar
@@ -232,7 +232,17 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
     hostDetails: Em.Route.extend({
 
       breadcrumbs: {
-        labelBindingPath: 'App.router.mainHostDetailsController.content.hostName'
+        itemView: Em.View.extend({
+          tagName: "a",
+          contentBinding: 'App.router.mainHostDetailsController.content',
+          isActive: Em.computed.equal('content.passiveState', 'OFF'),
+          click: function() {
+            App.router.transitionTo('hosts.hostDetails.summary', this.get('content'));
+          },
+          template: Em.Handlebars.compile('<span class="host-breadcrumb">{{view.content.hostName}}</span>' +
+            '<span rel="HealthTooltip" {{bindAttr class="view.content.healthClass view.content.healthIconClass :icon"}} ' +
+            'data-placement="bottom" {{bindAttr data-original-title="view.content.healthToolTip" }}></span>')
+        })
       },
 
       route: '/:host_id',
@@ -482,7 +492,7 @@ module.exports = Em.Route.extend(App.RouterRedirections, {
           App.router.get('updateController').set('isWorking', false);
           router.get('mainController').dataLoading().done(function () {
             App.ModalPopup.show({
-              classNames: ['wizard-modal-wrapper'],
+              classNames: ['wizard-modal-wrapper', 'disable-security-modal'],
               modalDialogClasses: ['modal-xlg'],
               header: Em.I18n.t('admin.removeSecurity.header'),
               bodyClass: App.KerberosDisableView.extend({

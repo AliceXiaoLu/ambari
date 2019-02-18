@@ -18,6 +18,7 @@
 package org.apache.ambari.server.serveraction.upgrades;
 
 import static org.easymock.EasyMock.anyObject;
+import static org.easymock.EasyMock.createNiceMock;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.reset;
@@ -35,14 +36,15 @@ import org.apache.ambari.server.agent.CommandReport;
 import org.apache.ambari.server.agent.ExecutionCommand;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.controller.KerberosHelper;
+import org.apache.ambari.server.mpack.MpackManagerFactory;
 import org.apache.ambari.server.orm.DBAccessor;
 import org.apache.ambari.server.orm.dao.StackDAO;
 import org.apache.ambari.server.stack.StackManagerFactory;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeHelper;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
 import org.apache.ambari.server.state.SecurityType;
-import org.apache.ambari.server.state.UpgradeHelper;
 import org.apache.ambari.server.state.stack.OsFamily;
 import org.apache.ambari.server.testutils.PartialNiceMockBinder;
 import org.apache.commons.lang.StringUtils;
@@ -71,7 +73,6 @@ public class KerberosKeytabsActionTest {
   public void setup() throws Exception {
 
     m_clusters = EasyMock.createMock(Clusters.class);
-    m_kerberosHelper = EasyMock.createMock(KerberosHelper.class);
     UnitOfWork unitOfWork = EasyMock.createMock(UnitOfWork.class);
 
     Map<String, String> mockProperties = new HashMap<String, String>() {{
@@ -94,10 +95,9 @@ public class KerberosKeytabsActionTest {
 
       @Override
       protected void configure() {
-        PartialNiceMockBinder.newBuilder().addClustersBinding().build().configure(binder());
+        PartialNiceMockBinder.newBuilder().addClustersBinding().addLdapBindings().build().configure(binder());
 
         bind(Clusters.class).toInstance(m_clusters);
-        bind(KerberosHelper.class).toInstance(m_kerberosHelper);
         bind(OsFamily.class).toInstance(EasyMock.createNiceMock(OsFamily.class));
         bind(UpgradeHelper.class).toInstance(EasyMock.createNiceMock(UpgradeHelper.class));
         bind(StackManagerFactory.class).toInstance(EasyMock.createNiceMock(StackManagerFactory.class));
@@ -105,8 +105,11 @@ public class KerberosKeytabsActionTest {
         bind(EntityManager.class).toInstance(EasyMock.createNiceMock(EntityManager.class));
         bind(DBAccessor.class).toInstance(EasyMock.createNiceMock(DBAccessor.class));
         bind(AmbariMetaInfo.class).toInstance(EasyMock.createNiceMock(AmbariMetaInfo.class));
+        bind(MpackManagerFactory.class).toInstance(createNiceMock(MpackManagerFactory.class));
       }
     });
+
+    m_kerberosHelper = m_injector.getInstance(KerberosHelper.class);
   }
 
   @Test

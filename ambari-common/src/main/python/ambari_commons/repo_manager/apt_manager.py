@@ -29,10 +29,10 @@ from resource_management.core.logger import Logger
 
 
 def replace_underscores(function_to_decorate):
-  def wrapper(*args):
+  def wrapper(*args, **kwargs):
     self = args[0]
     name = args[1].replace("_", "-")
-    return function_to_decorate(self, name, *args[2:])
+    return function_to_decorate(self, name, *args[2:], **kwargs)
   return wrapper
 
 
@@ -49,7 +49,7 @@ class AptManagerProperties(GenericManagerProperties):
   repo_update_cmd = [repo_manager_bin, 'update', '-qq']
 
   available_packages_cmd = [repo_cache_bin, "dump"]
-  installed_packages_cmd = [pkg_manager_bin, "-l"]
+  installed_packages_cmd = ['COLUMNS=999', pkg_manager_bin, "-l"]
 
   repo_definition_location = "/etc/apt/sources.list.d"
 
@@ -66,8 +66,6 @@ class AptManagerProperties(GenericManagerProperties):
   verify_dependency_cmd = [repo_manager_bin, '-qq', 'check']
 
   install_cmd_env = {'DEBIAN_FRONTEND': 'noninteractive'}
-
-  check_cmd = pkg_manager_bin + " --get-selections | grep -v deinstall | awk '{print $1}' | grep ^%s$"
 
   repo_url_exclude = "ubuntu.com"
   configuration_dump_cmd = [AMBARI_SUDO_BINARY, "apt-config", "dump"]
@@ -177,7 +175,20 @@ class AptManager(GenericManager):
       return filtered_packages
     else:
       Logger.info("Packages will be queried using all available repositories on the system.")
-      return [package[0] for package in packages]
+
+      # this is the case where the hosts are marked as sysprepped, but
+      # search the repos on-system anyway.  the url specified in ambari must match the one
+      # in the list file for this to work
+      for repo_id in repo_ids:
+        for package in packages:
+          if repo_id in package[2]:
+            filtered_packages.append(package[0])
+
+      if len(filtered_packages) > 0:
+        Logger.info("Found packages for repo {}".format(str(filtered_packages)))
+        return filtered_packages
+      else:
+        return [package[0] for package in packages]
 
   def package_manager_configuration(self):
     """
@@ -202,7 +213,7 @@ class AptManager(GenericManager):
     pattern = re.compile("has missing dependency|E:")
 
     if r.code or (r.out and pattern.search(r.out)):
-      err_msg = Logger.filter_text("Failed to verify package dependencies. Execution of '%s' returned %s. %s" % (VERIFY_DEPENDENCY_CMD, code, out))
+      err_msg = Logger.filter_text("Failed to verify package dependencies. Execution of '%s' returned %s. %s" % (self.properties.verify_dependency_cmd, r.code, r.out))
       Logger.error(err_msg)
       return False
 
@@ -224,7 +235,7 @@ class AptManager(GenericManager):
 
     if not name:
       raise ValueError("Installation command was executed with no package name")
-    elif context.is_upgrade or context.use_repos or not self._check_existence(name):
+    elif not self._check_existence(name) or context.action_force:
       cmd = self.properties.install_cmd[context.log_output]
       copied_sources_files = []
       is_tmp_dir_created = False
@@ -238,7 +249,7 @@ class AptManager(GenericManager):
         if use_repos:
           is_tmp_dir_created = True
           apt_sources_list_tmp_dir = tempfile.mkdtemp(suffix="-ambari-apt-sources-d")
-          Logger.info("Temporary sources directory was created: %s" % apt_sources_list_tmp_dir)
+          Logger.info("Temporary sources directory was created: {}".format(apt_sources_list_tmp_dir))
 
           for repo in use_repos:
             new_sources_file = os.path.join(apt_sources_list_tmp_dir, repo + '.list')
@@ -314,6 +325,12 @@ class AptManager(GenericManager):
     apt-get in inconsistant state (locked, used, having invalid repo). Once packages are installed
     we should not rely on that.
     """
+    # this method is more optimised than #installed_packages, as here we do not call available packages(as we do not
+    # interested in repository, from where package come)
+    cmd = self.properties.installed_packages_cmd + [name]
 
-    r = shell.subprocess_executor(self.properties.check_cmd % name)
-    return not bool(r.code)
+    with shell.process_executor(cmd, strategy=shell.ReaderStrategy.BufferedChunks, silent=True) as output:
+      for package, version in AptParser.packages_installed_reader(output):
+        return package == name
+
+    return False

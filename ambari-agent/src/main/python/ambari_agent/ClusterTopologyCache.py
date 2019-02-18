@@ -21,12 +21,14 @@ limitations under the License.
 
 from ambari_agent import hostname
 from ambari_agent.ClusterCache import ClusterCache
-from ambari_agent.Utils import ImmutableDictionary
+from ambari_agent.Utils import ImmutableDictionary, synchronized
 
 from collections import defaultdict
+import threading
 import logging
 
 logger = logging.getLogger(__name__)
+topology_update_lock = threading.RLock()
 
 class ClusterTopologyCache(ClusterCache):
   """
@@ -47,11 +49,13 @@ class ClusterTopologyCache(ClusterCache):
     self.current_host_ids_to_cluster = {}
     self.cluster_local_components = {}
     self.cluster_host_info = None
+    self.component_version_map = {}
     super(ClusterTopologyCache, self).__init__(cluster_cache_dir)
 
   def get_cache_name(self):
     return 'topology'
 
+  @synchronized(topology_update_lock)
   def on_cache_update(self):
     self.cluster_host_info = None
 
@@ -74,20 +78,27 @@ class ClusterTopologyCache(ClusterCache):
 
     for cluster_id, cluster_topology in self.iteritems():
       self.cluster_local_components[cluster_id] = []
+      self.component_version_map[cluster_id] = defaultdict(lambda:defaultdict(lambda: {}))
 
       if not self.current_host_ids_to_cluster[cluster_id]:
         continue
 
       current_host_id = self.current_host_ids_to_cluster[cluster_id]
-      for component_dict in self[cluster_id].components:
-        if 'hostIds' in component_dict and current_host_id in component_dict.hostIds:
-          if current_host_id in component_dict.hostIds:
-            self.cluster_local_components[cluster_id].append(component_dict.componentName)
+
+      if 'components' in self[cluster_id]:
+        for component_dict in self[cluster_id].components:
+          if 'version' in component_dict.commandParams:
+            self.component_version_map[cluster_id][component_dict.serviceName][component_dict.componentName] = component_dict.commandParams.version
+
+          if 'hostIds' in component_dict and current_host_id in component_dict.hostIds:
+            if current_host_id in component_dict.hostIds:
+              self.cluster_local_components[cluster_id].append(component_dict.componentName)
 
 
     self.hosts_to_id = ImmutableDictionary(hosts_to_id)
     self.components_by_key = ImmutableDictionary(components_by_key)
 
+  @synchronized(topology_update_lock)
   def get_cluster_host_info(self, cluster_id):
     """
     Get dictionary used in commands as clusterHostInfo
@@ -101,9 +112,23 @@ class ClusterTopologyCache(ClusterCache):
       hostnames = [self.hosts_to_id[cluster_id][host_id].hostName for host_id in component_dict.hostIds]
       cluster_host_info[component_name.lower()+"_hosts"] += hostnames
 
+    cluster_host_info['all_hosts'] = []
+    cluster_host_info['all_racks'] = []
+    cluster_host_info['all_ipv4_ips'] = []
+    
+    for hosts_dict in self[cluster_id].hosts:
+      host_name = hosts_dict.hostName
+      rack_name = hosts_dict.rackName
+      ip = hosts_dict.ipv4
+      
+      cluster_host_info['all_hosts'].append(host_name)
+      cluster_host_info['all_racks'].append(rack_name)
+      cluster_host_info['all_ipv4_ips'].append(ip)
+
     self.cluster_host_info = cluster_host_info
     return cluster_host_info
 
+  @synchronized(topology_update_lock)
   def get_component_info_by_key(self, cluster_id, service_name, component_name):
     """
     Find component by service_name and component_name in list of component dictionaries.
@@ -115,9 +140,15 @@ class ClusterTopologyCache(ClusterCache):
     except KeyError:
       return None
 
+  @synchronized(topology_update_lock)
   def get_cluster_local_components(self, cluster_id):
     return self.cluster_local_components[cluster_id]
 
+  @synchronized(topology_update_lock)
+  def get_cluster_component_version_map(self, cluster_id):
+    return self.component_version_map[cluster_id]
+
+  @synchronized(topology_update_lock)
   def get_host_info_by_id(self, cluster_id, host_id):
     """
     Find host by id in list of host dictionaries.
@@ -127,10 +158,12 @@ class ClusterTopologyCache(ClusterCache):
     except KeyError:
       return None
 
+  @synchronized(topology_update_lock)
   def get_current_host_info(self, cluster_id):
     current_host_id = self.current_host_ids_to_cluster[cluster_id]
     return self.get_host_info_by_id(cluster_id, current_host_id)
 
+  @synchronized(topology_update_lock)
   def get_current_host_id(self, cluster_id):
     try:
       return self.current_host_ids_to_cluster[cluster_id]

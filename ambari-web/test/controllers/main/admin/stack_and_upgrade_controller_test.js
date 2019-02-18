@@ -327,6 +327,59 @@ describe('App.MainAdminStackAndUpgradeController', function() {
     });
   });
 
+  describe("#getUpgradeTask()", function() {
+
+    it("default callback", function() {
+      var task = Em.Object.create({
+        request_id: 1,
+        group_id: 2,
+        stage_id: 3,
+        id: 4
+      });
+      controller.getUpgradeTask(task);
+      var args = testHelpers.findAjaxRequest('name', 'admin.upgrade.upgrade_task');
+      expect(args[0]).to.exists;
+      expect(args[0].sender).to.be.eql(controller);
+      expect(args[0].success).to.be.equal('getUpgradeTaskSuccessCallback');
+      expect(args[0].data).to.be.eql({
+        upgradeId: 1,
+        groupId: 2,
+        stageId: 3,
+        taskId: 4,
+        task: task
+      });
+    });
+  });
+
+  describe('#getUpgradeTaskSuccessCallback', function() {
+
+    it('should update volatile properties', function() {
+      var data = {
+        Tasks: {
+          status: 'IN_PROGRESS',
+          id: 1,
+          stderr: 'Error',
+          error_log: '',
+          host_name: 'host1',
+          output_log: '',
+          stdout: ''
+        }
+      };
+      var params = {
+        task: Em.Object.create()
+      };
+      controller.getUpgradeTaskSuccessCallback(data, {}, params);
+      expect(params.task).to.be.eql(Em.Object.create({
+        status: 'IN_PROGRESS',
+        stderr: 'Error',
+        error_log: '',
+        host_name: 'host1',
+        output_log: '',
+        stdout: ''
+      }))
+    });
+  });
+
   describe("#openUpgradeDialog()", function () {
     var mock = {
       observer: Em.K
@@ -526,9 +579,6 @@ describe('App.MainAdminStackAndUpgradeController', function() {
         );
         expect(controller.upgrade.callCount).to.equal(item.upgradeCalledCount);
         expect(App.showClusterCheckPopup.callCount).to.equal(item.showClusterCheckPopupCalledCount);
-        if (item.check.id === 'CONFIG_MERGE') {
-          expect(App.showClusterCheckPopup.firstCall.args[2]).to.eql(item.configs);
-        }
       });
     });
   });
@@ -933,7 +983,6 @@ describe('App.MainAdminStackAndUpgradeController', function() {
   describe("#upgradeOptions()", function() {
     var version = Em.Object.create({displayName: 'HDP-2.2'});
     beforeEach(function () {
-      sinon.spy(App.ModalPopup, 'show');
       sinon.spy(App, 'showConfirmationFeedBackPopup');
       sinon.stub(controller, 'getSupportedUpgradeTypes').returns({
         done: function (callback) {
@@ -956,7 +1005,6 @@ describe('App.MainAdminStackAndUpgradeController', function() {
     });
 
     afterEach(function () {
-      App.ModalPopup.show.restore();
       App.showConfirmationFeedBackPopup.restore();
       controller.runPreUpgradeCheck.restore();
       controller.getSupportedUpgradeTypes.restore();
@@ -2109,6 +2157,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
           {
             type: 't0',
             name: 'p0',
+            serviceName: 'HDFS',
             currentValue: 'c0',
             recommendedValue: 'n0',
             isDeprecated: false,
@@ -2119,6 +2168,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
           {
             type: 't1',
             name: 'p1',
+            serviceName: 'HDFS',
             currentValue: 'c1',
             recommendedValue: 'n1',
             isDeprecated: false,
@@ -2129,6 +2179,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
           {
             type: 't2',
             name: 'p2',
+            serviceName: 'HDFS',
             currentValue: 'c2',
             recommendedValue: Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.deprecated'),
             isDeprecated: true,
@@ -2177,6 +2228,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
           {
             type: 't0',
             name: 'p0',
+            serviceName: 'HDFS',
             currentValue: 'c0',
             recommendedValue: 'n0',
             isDeprecated: false,
@@ -2187,6 +2239,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
           {
             type: 't1',
             name: 'p1',
+            serviceName: 'HDFS',
             currentValue: 'c1',
             recommendedValue: 'n1',
             isDeprecated: false,
@@ -2197,6 +2250,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
           {
             type: 't2',
             name: 'p2',
+            serviceName: 'HDFS',
             currentValue: 'c2',
             recommendedValue: Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.deprecated'),
             isDeprecated: true,
@@ -2211,6 +2265,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
             "recommendedValue": "c2",
             "resultingValue": "c3",
             "type": "t3",
+            serviceName: 'HDFS',
             "wasModified": true,
             "willBeRemoved": false
           }
@@ -2221,7 +2276,9 @@ describe('App.MainAdminStackAndUpgradeController', function() {
 
     cases.forEach(function (item) {
       it(item.title, function () {
+        sinon.stub(App.configsCollection, 'getConfigByName').returns({serviceName: 'HDFS'});
         expect(controller.getConfigsWarnings(item.configsMergeWarning)).to.eql(item.configs);
+        App.configsCollection.getConfigByName.restore();
       });
     });
 
@@ -2362,6 +2419,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
           {
             type: 'type1',
             name: 'name1',
+            serviceName: 'S1',
             currentValue: 'currentValue1',
             recommendedValue: 'recommendedValue1',
             resultingValue: 'resultingValue1'
@@ -2369,6 +2427,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
           {
             type: 'type2',
             name: 'name2',
+            serviceName: 'S2',
             currentValue: 'currentValue2',
             recommendedValue: 'recommendedValue2',
             resultingValue: 'resultingValue2'
@@ -2391,6 +2450,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
       /*eslint-disable no-useless-concat */
       expect(mock.document.write.calledWith('<table style="text-align: left;"><thead><tr>' +
         '<th>' + Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.configType') + '</th>' +
+        '<th>' + Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.serviceName') + '</th>' +
         '<th>' + Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.propertyName') + '</th>' +
         '<th>' + Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.currentValue') + '</th>' +
         '<th>' + Em.I18n.t('popup.clusterCheck.Upgrade.configsMerge.recommendedValue') + '</th>' +
@@ -2398,6 +2458,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
         '</tr></thead><tbody>' +
         '<tr>' +
         '<td>' + 'type1' + '</td>' +
+        '<td>' + 'S1' + '</td>' +
         '<td>' + 'name1' + '</td>' +
         '<td>' + 'currentValue1' + '</td>' +
         '<td>' + 'recommendedValue1' + '</td>' +
@@ -2405,6 +2466,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
         '</tr>' +
         '<tr>' +
         '<td>' + 'type2' + '</td>' +
+        '<td>' + 'S2' + '</td>' +
         '<td>' + 'name2' + '</td>' +
         '<td>' + 'currentValue2' + '</td>' +
         '<td>' + 'recommendedValue2' + '</td>' +
@@ -3485,6 +3547,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
       App.Service.find.restore();
       App.StackService.find.restore();
       App.RepositoryVersion.find.restore();
+      App.router.get.restore();
       controller.set('serviceVersionsMap', {});
     });
 
@@ -3494,6 +3557,7 @@ describe('App.MainAdminStackAndUpgradeController', function() {
         sinon.stub(App.Service, 'find').returns(item.services);
         sinon.stub(App.StackService, 'find').returns(item.stackServices);
         sinon.stub(App.RepositoryVersion, 'find').returns(item.repoVersions);
+        sinon.stub(App.router, 'get').returns(true);
         controller.getServiceVersionFromRepo();
         expect(controller.get('serviceVersionsMap')).to.be.eql(item.expected);
       });
@@ -3563,12 +3627,10 @@ describe('App.MainAdminStackAndUpgradeController', function() {
    describe('#confirmRevertPatchUpgrade', function() {
     beforeEach(function() {
       sinon.stub(App.RepositoryVersion, 'find').returns(Em.Object.create());
-      sinon.stub(App.ModalPopup, 'show');
       sinon.stub(controller, 'getServicesToBeReverted');
     });
     afterEach(function() {
       App.RepositoryVersion.find.restore();
-      App.ModalPopup.show.restore();
       controller.getServicesToBeReverted.restore();
     });
 
@@ -3729,5 +3791,68 @@ describe('App.MainAdminStackAndUpgradeController', function() {
       var popup = controller.upgradeOptions(false, version, true);
       expect( controller.get('runningCheckRequests')).to.have.length(1);
     })
+  });
+  
+  describe('#removeOutOfSyncComponents', function() {
+    beforeEach(function() {
+      sinon.stub(App.RepositoryVersion, 'find').returns(Em.Object.create({
+        stackVersion: {
+          outOfSyncHosts: ['host1']
+        }
+      }));
+      sinon.stub(App, 'get').returns({
+        getKDCSessionState: Em.clb
+      });
+    });
+    afterEach(function() {
+      App.RepositoryVersion.find.restore();
+      App.get.restore();
+    });
+    
+    it('App.ajax.send should be called', function() {
+      var modal = controller.removeOutOfSyncComponents({context: {repoId: 1}});
+      modal.onPrimary();
+      var args = testHelpers.findAjaxRequest('name', 'host.host_component.delete_components');
+      expect(args[0]).to.exists;
+      expect(args[0].data).to.be.eql({
+        hosts: ['host1'],
+        data: JSON.stringify({
+          RequestInfo: {
+            query: 'HostRoles/host_name.in(host1)&HostRoles/state=INSTALL_FAILED'
+          }
+        })
+      });
+    });
+  });
+  
+  describe('#reinstallOutOfSyncComponents', function() {
+    beforeEach(function() {
+      sinon.stub(App.RepositoryVersion, 'find').returns(Em.Object.create({
+        stackVersion: {
+          outOfSyncHosts: ['host1']
+        }
+      }));
+      sinon.stub(App, 'get').returns({
+        getKDCSessionState: Em.clb
+      });
+    });
+    afterEach(function() {
+      App.RepositoryVersion.find.restore();
+      App.get.restore();
+    });
+    
+    it('App.ajax.send should be called', function() {
+      var modal = controller.reinstallOutOfSyncComponents({context: {repoId: 1}});
+      modal.onPrimary();
+      var args = testHelpers.findAjaxRequest('name', 'common.host_components.update');
+      expect(args[0]).to.exists;
+      expect(args[0].data).to.be.eql({
+        HostRoles: {
+          state: 'INSTALLED'
+        },
+        query: 'HostRoles/host_name.in(host1)&HostRoles/state=INSTALL_FAILED',
+        context: Em.I18n.t('hosts.host.maintainance.reinstallFailedComponents.context')
+      });
+    });
   });
 });

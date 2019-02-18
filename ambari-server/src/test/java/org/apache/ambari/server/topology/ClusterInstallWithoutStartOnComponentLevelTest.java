@@ -56,6 +56,7 @@ import org.apache.ambari.server.controller.internal.ProvisionClusterRequest;
 import org.apache.ambari.server.controller.internal.Stack;
 import org.apache.ambari.server.controller.spi.ClusterController;
 import org.apache.ambari.server.controller.spi.ResourceProvider;
+import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
 import org.apache.ambari.server.orm.entities.TopologyLogicalRequestEntity;
 import org.apache.ambari.server.security.encryption.CredentialStoreService;
 import org.apache.ambari.server.state.Cluster;
@@ -158,6 +159,8 @@ public class ClusterInstallWithoutStartOnComponentLevelTest extends EasyMockSupp
 
   @Mock
   private TopologyValidatorService topologyValidatorServiceMock;
+  @Mock(type = MockType.NICE)
+  private AmbariEventPublisher eventPublisher;
 
   private final Configuration stackConfig = new Configuration(new HashMap<>(),
     new HashMap<>());
@@ -232,8 +235,7 @@ public class ClusterInstallWithoutStartOnComponentLevelTest extends EasyMockSupp
 
     group1ServiceComponents.put("service1", Arrays.asList("component1", "component3"));
     group1ServiceComponents.put("service2", Collections.singleton("component2"));
-    group2ServiceComponents.put("service2", Collections.singleton("component3"));
-    group2ServiceComponents.put("service2", Collections.singleton("component4"));
+    group2ServiceComponents.put("service2", Arrays.asList("component3", "component4"));
 
     expect(blueprint.getHostGroup("group1")).andReturn(group1).anyTimes();
     expect(blueprint.getHostGroup("group2")).andReturn(group2).anyTimes();

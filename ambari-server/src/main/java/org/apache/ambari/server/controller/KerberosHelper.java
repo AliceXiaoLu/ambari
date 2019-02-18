@@ -61,9 +61,25 @@ public interface KerberosHelper {
    */
   String DIRECTIVE_COMPONENTS = "regenerate_components";
   /**
-   * directive used to pass host list to regenerate keytabs on
+   * directive used to indicate configurations are not to be updated (if set to "true") when regenerating
+   * keytab files
+   * @deprecated use {@link #DIRECTIVE_CONFIG_UPDATE_POLICY}
    */
   String DIRECTIVE_IGNORE_CONFIGS = "ignore_config_updates";
+  /**
+   * directive used to indicate how to handle configuration updates when regenerating keytab files
+   *
+   * expected values:
+   * <ul>
+   * <li>none</li>
+   * <li>identities_only</li>
+   * <li>new_and_identities</li>
+   * <li>all</li>
+   * </ul>
+   *
+   * @see UpdateConfigurationPolicy
+   */
+  String DIRECTIVE_CONFIG_UPDATE_POLICY = "config_update_policy";
   /**
    * directive used to indicate that the enable Kerberos operation should proceed even if the
    * cluster's security type is not changing
@@ -119,6 +135,10 @@ public interface KerberosHelper {
    */
   String MANAGE_AUTH_TO_LOCAL_RULES = "manage_auth_to_local";
   /**
+   * The kerberos-env property name declaring whether the Hadoop auth_to_local rules should be included for all components of an installed service even if the component itself is not installed
+   */
+  String INCLUDE_ALL_COMPONENTS_IN_AUTH_TO_LOCAL_RULES = "include_all_components_in_auth_to_local_rules";
+  /**
    * The kerberos-env property name declaring whether auth-to-local rules should be case-insensitive or not
    */
   String CASE_INSENSITIVE_USERNAME_RULES = "case_insensitive_username_rules";
@@ -130,6 +150,18 @@ public interface KerberosHelper {
    * @see org.apache.ambari.server.serveraction.kerberos.PreconfigureServiceType
    */
   String PRECONFIGURE_SERVICES = "preconfigure_services";
+
+  /**
+   * If {@code true}, then this will create the stages and tasks as being
+   * retry-able. A failure during Kerberos operations will not cause the entire
+   * request to be aborted.
+   */
+  String ALLOW_RETRY = "allow_retry_on_failure";
+
+  /**
+   * Used as key in config maps to store component to host assignment mapping.
+   */
+  String CLUSTER_HOST_INFO = "clusterHostInfo";
 
   /**
    * Toggles Kerberos security to enable it or remove it depending on the state of the cluster.
@@ -791,6 +823,20 @@ public interface KerberosHelper {
    * @return a map of configuration types to sets of property names
    */
   Map<String, Set<String>> translateConfigurationSpecifications(Collection<String> configurationSpecifications);
+  
+  /**
+   * Gathers the Kerberos-related data from configurations and stores it in a new KerberosDetails
+   * instance.
+   *
+   * @param cluster          the relevant Cluster
+   * @param manageIdentities a Boolean value indicating how to override the configured behavior
+   *                         of managing Kerberos identities; if null the configured behavior
+   *                         will not be overridden
+   * @return a new KerberosDetails with the collected configuration data
+   * @throws AmbariException
+   */
+  KerberosDetails getKerberosDetails(Cluster cluster, Boolean manageIdentities)
+    throws KerberosInvalidConfigurationException, AmbariException;  
 
   /**
    * Types of Kerberos descriptors related to where the data is stored.

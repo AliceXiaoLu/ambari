@@ -37,9 +37,9 @@ App.HostComponent = DS.Model.extend({
 
   serviceDisplayName: Em.computed.truncate('service.displayName', 14, 11),
 
-  getDisplayName: Em.computed.truncate('displayName', 19, 16),
+  getDisplayName: Em.computed.truncate('displayName', 30, 25),
 
-  getDisplayNameAdvanced:Em.computed.truncate('displayNameAdvanced', 19, 16),
+  getDisplayNameAdvanced:Em.computed.truncate('displayNameAdvanced', 30, 25),
 
   summaryLabelClassName:function(){
     return 'label_for_'+this.get('componentName').toLowerCase();
@@ -116,7 +116,17 @@ App.HostComponent = DS.Model.extend({
    * User friendly host component status
    * @returns {String}
    */
-  isActive: Em.computed.equal('passiveState', 'OFF'),
+  isActive: function() {
+    let passiveState = this.get('passiveState');
+    if (passiveState === 'IMPLIED_FROM_HOST') {
+      passiveState = this.get('host.passiveState');
+    } else if (passiveState === 'IMPLIED_FROM_SERVICE') {
+      passiveState = this.get('service.passiveState');
+    } else if (passiveState === 'IMPLIED_FROM_SERVICE_AND_HOST') {
+      return this.get('service.passiveState') === 'OFF' && this.get('host.passiveState') === 'OFF';
+    }
+    return passiveState === 'OFF';
+  }.property('passiveState', 'host.passiveState', 'service.passiveState'),
 
   /**
    * Determine if passiveState is implied from host or/and service
@@ -134,16 +144,25 @@ App.HostComponent = DS.Model.extend({
   }.property('componentName', 'App.components.nonHDP'),
 
   /**
+   * @type {number}
+   */
+  warningCount: 0,
+  /**
+   * @type {number}
+   */
+  criticalCount: 0,
+
+  /**
    * Does component have Critical Alerts
    * @type {boolean}
    */
-  hasCriticalAlerts: false,
+  hasCriticalAlerts: Em.computed.gte('criticalCount', 0),
 
   /**
    * Number of the Critical and Warning alerts for current component
    * @type {number}
    */
-  alertsCount: 0,
+  alertsCount: Em.computed.sumProperties('warningCount', 'criticalCount'),
 
   statusClass: function () {
     return this.get('isActive') ? this.get('workStatus') : 'icon-medkit';
@@ -275,7 +294,7 @@ App.HostComponentStatus = {
       case this.disabled:
         return 'Disabled';
       case this.init:
-        return 'Install Pending';
+        return 'Install Pending...';
     }
     return 'Unknown';
   },
@@ -336,6 +355,16 @@ App.HostComponentActionMap = {
         disabled: false,
         hasSubmenu: hasMultipleMasterComponentGroups,
         submenuOptions: hasMultipleMasterComponentGroups ? this.getMastersSubmenu(ctx, 'restartCertainHostComponents') : []
+      },
+      //Ongoing feature. Will later replace RESTART_ALL
+      RESTART_SERVICE: {
+        action: 'restartServiceAllComponents',
+        context: ctx.get('serviceName'),
+        label: Em.I18n.t('restart.service.rest.context').format(ctx.get('displayName')),
+        cssClass: 'glyphicon glyphicon-time',
+        disabled: false,
+        hasSubmenu: true,
+        submenuOptions: ctx.get('controller.restartOptions')
       },
       RESTART_NAMENODES: {
         action: '',

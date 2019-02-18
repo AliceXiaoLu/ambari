@@ -72,7 +72,6 @@ App.DirectoriesTabOnStep7View = Em.View.extend({
     themeTemplate: require('templates/wizard/step7/directories_theme_layout'),
     tabs: function () {
       var tabs = App.Tab.find().filterProperty('themeName', 'directories').filterProperty('serviceName', this.get('controller.selectedService.serviceName'));
-      this.processTabs(tabs);
       return tabs;
     }.property('controller.selectedService.serviceName'),
     updateFilterCounters: function () {
@@ -83,6 +82,8 @@ App.DirectoriesTabOnStep7View = Em.View.extend({
   isLeftArrowDisabled: true,
 
   isRightArrowDisabled: true,
+  
+  isNavArrowsHidden: Em.computed.and('isLeftArrowDisabled', 'isRightArrowDisabled'),
 
   enableRightArrow: function () {
     var container = $(this.get('element')).find('.tabs-container');

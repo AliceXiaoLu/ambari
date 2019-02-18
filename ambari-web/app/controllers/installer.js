@@ -160,21 +160,6 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
   },
 
   /**
-   * TODO remove when functionality to skip master components ready
-   * @param jsonData
-   */
-  loadServiceComponentsSuccessCallback: function(jsonData) {
-    if (App.Stack.find().findProperty('isSelected', true).get('stackName') === 'HDF') {
-      jsonData.items.forEach((service) => {
-        service.components = service.components.reject((component) => {
-          return ['ACTIVITY_ANALYZER', 'ACTIVITY_EXPLORER'].contains(component.StackServiceComponents.component_name);
-        });
-      });
-    }
-    this._super(jsonData);
-  },
-
-  /**
    * total set of hosts registered to cluster, analog of App.Host model,
    * used in Installer wizard until hosts are installed
    */
@@ -320,16 +305,22 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
         }
       }, this);
     }
-
-    data.items.sortProperty('VersionDefinition.stack_version').reverse().forEach(function (versionDefinition) {
-      // to display repos panel, should map all available operating systems including empty ones
-      var stackInfo = {};
-      stackInfo.isStacksExistInDb = isStacksExistInDb;
-      stackInfo.stacks = stacks;
-      stackInfo.oses = oses;
-      stackInfo.repos = repos;
-      this.getSupportedOSList(versionDefinition, stackInfo, params.dfd);
-    }, this);
+    // if data.items is empty, we show error modal end return to back step
+    if (data.items && data.items.length) {
+      data.items.sortProperty('VersionDefinition.stack_version').reverse().forEach(function (versionDefinition) {
+        // to display repos panel, should map all available operating systems including empty ones
+        var stackInfo = {};
+        stackInfo.isStacksExistInDb = isStacksExistInDb;
+        stackInfo.stacks = stacks;
+        stackInfo.oses = oses;
+        stackInfo.repos = repos;
+        this.getSupportedOSList(versionDefinition, stackInfo, params.dfd);
+      }, this);
+    } else {
+      App.showAlertPopup(Em.I18n.t('common.error'), Em.I18n.t('installer.step1.noVersionDefinitions'), function() {
+        App.router.send('back');
+      });
+    }
   },
 
   mergeChanges: function (repos, oses, stacks) {
@@ -366,9 +357,9 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
       stacks.setEach('isSelected', false);
       stacks.sortProperty('id').set('lastObject.isSelected', true);
     }
-    dfd.resolve();
     this.set('content.stacks', App.Stack.find());
     App.set('currentStackVersion', App.Stack.find().findProperty('isSelected').get('stackNameVersion'));
+    dfd.resolve();
   },
 
   /**
@@ -718,6 +709,23 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
     });
   },
 
+  showStackErrorAndSkipStepIfNeeded: function (response) {
+    var stackName = response.Versions.stack_name;
+    var stackVersion = response.Versions.stack_version;
+    var header = Em.I18n.t('installer.step1.useLocalRepo.getSurpottedOs.stackError.title').format(stackName, stackVersion);
+    var body = response.Versions['stack-errors'].join('. ');
+    this.decrementProperty('loadStacksRequestsCounter');
+    App.showAlertPopup(header, body);
+    if (this.get('loadStacksRequestsCounter') === 0 && !App.Stack.find().toArray().length) {
+      var wizardStep0Controller = App.router.get('wizardStep0Controller');
+      wizardStep0Controller.set('hasNotStacksAvailable', true);
+      App.router.send('gotoStep' + 0);
+      var installationErrorHeader = Em.I18n.t('installer.step1.useLocalRepo.getSurpottedOs.noStacksError.title');
+      var installationErrorBody = Em.I18n.t('installer.step1.useLocalRepo.getSurpottedOs.noStacksError.body');
+      App.showAlertPopup(installationErrorHeader, installationErrorBody);
+    }
+  },
+
   /**
    * onSuccess callback for getSupportedOSList.
    */
@@ -730,6 +738,10 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
       existedOS.isSelected = true;
       existedMap[existedOS.OperatingSystems.os_type] = existedOS;
     });
+    if (response.Versions && response.Versions['stack-errors'] && response.Versions['stack-errors'].length) {
+      this.showStackErrorAndSkipStepIfNeeded(response);
+      return;
+    }
     response.operating_systems.forEach(function(supportedOS) {
       if(!existedMap[supportedOS.OperatingSystems.os_type]) {
         supportedOS.isSelected = false;
@@ -878,8 +890,10 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
       if (!verifyBaseUrl) {
         dfd.resolve();
       }
+      //for redhat satellite/spacewalk the os urls will be empty
+      var useRedhatSatellite = wizardStep1Controller.get('selectedStack.useRedhatSatellite');
       selectedStack.get('operatingSystems').forEach(function (os) {
-        if (os.get('isSelected') && !os.get('isEmpty')) {
+        if (os.get('isSelected') && (useRedhatSatellite || !os.get('isEmpty'))) {
           os.get('repositories').forEach(function (repo) {
             if (repo.get('showRepo')) {
               repo.setProperties({

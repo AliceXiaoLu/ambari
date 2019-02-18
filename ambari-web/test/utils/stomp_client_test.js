@@ -65,20 +65,42 @@ describe('App.StompClient', function () {
   });
 
   describe('#getSocket', function() {
+    beforeEach(function () {
+      sinon.stub(stomp, 'getHostName').returns('test');
+      sinon.stub(stomp, 'isSecure').returns(false);
+    });
+    afterEach(function () {
+      stomp.getHostName.restore();
+      stomp.isSecure.restore();
+      stomp.getPort.restore();
+    });
     it('should return WebSocket instance', function() {
-      expect(stomp.getSocket().URL).to.be.equal('ws://:8080/api/stomp/v1/websocket');
+      sinon.stub(stomp, 'getPort').returns(':8080');
+      expect(stomp.getSocket().URL).to.be.equal('ws://test:8080/api/stomp/v1/websocket');
     });
     it('should return SockJS instance', function() {
-      expect(stomp.getSocket(true).url).to.be.equal('http://:8080/api/stomp/v1');
+      sinon.stub(stomp, 'getPort').returns('');
+      expect(stomp.getSocket(true).url).to.be.equal('http://test/api/stomp/v1');
     });
   });
 
   describe('#getSocketUrl', function() {
+    beforeEach(function () {
+      sinon.stub(stomp, 'getHostName').returns('test');
+      sinon.stub(stomp, 'isSecure').returns(false);
+    });
+    afterEach(function () {
+      stomp.getHostName.restore();
+      stomp.isSecure.restore();
+      stomp.getPort.restore();
+    });
     it('should return socket url for websocket', function() {
-      expect(stomp.getSocketUrl('{protocol}://{hostname}:{port}', true)).to.equal('ws://:8080');
+      sinon.stub(stomp, 'getPort').returns(':8080');
+      expect(stomp.getSocketUrl('{protocol}://{hostname}{port}', true)).to.equal('ws://test:8080');
     });
     it('should return socket url for sockjs', function() {
-      expect(stomp.getSocketUrl('{protocol}://{hostname}:{port}', false)).to.equal('http://:8080');
+      sinon.stub(stomp, 'getPort').returns('');
+      expect(stomp.getSocketUrl('{protocol}://{hostname}{port}', false)).to.equal('http://test');
     });
   });
 
@@ -121,13 +143,11 @@ describe('App.StompClient', function () {
   describe('#reconnect', function() {
     beforeEach(function() {
       sinon.stub(stomp, 'connect').returns({done: Em.clb});
-      sinon.stub(stomp, 'unsubscribe');
       sinon.stub(stomp, 'subscribe');
       this.clock = sinon.useFakeTimers();
     });
     afterEach(function() {
       stomp.connect.restore();
-      stomp.unsubscribe.restore();
       stomp.subscribe.restore();
       this.clock.restore();
     });
@@ -136,14 +156,12 @@ describe('App.StompClient', function () {
       var subscriptions = {
         'foo': {
           destination: 'foo',
-          handlers: { default: Em.K },
-          unsubscribe: sinon.spy()
+          handlers: { default: Em.K }
         }
       };
       stomp.set('subscriptions', subscriptions);
       stomp.reconnect();
       this.clock.tick(stomp.RECONNECT_TIMEOUT);
-      expect(subscriptions['foo'].unsubscribe.calledOnce).to.be.true;
       expect(stomp.subscribe.calledWith('foo', Em.K)).to.be.true;
     });
   });

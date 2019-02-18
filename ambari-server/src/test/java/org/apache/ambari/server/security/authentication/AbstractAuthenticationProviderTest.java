@@ -26,12 +26,15 @@ import static org.junit.Assert.assertTrue;
 
 import javax.persistence.EntityManager;
 
+import org.apache.ambari.server.configuration.AmbariServerConfiguration;
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.hooks.HookContextFactory;
 import org.apache.ambari.server.hooks.HookService;
+import org.apache.ambari.server.ldap.service.AmbariLdapConfigurationProvider;
 import org.apache.ambari.server.orm.DBAccessor;
 import org.apache.ambari.server.orm.entities.UserEntity;
 import org.apache.ambari.server.security.authorization.Users;
+import org.apache.ambari.server.security.encryption.Encryptor;
 import org.apache.ambari.server.state.stack.OsFamily;
 import org.easymock.EasyMockSupport;
 import org.junit.After;
@@ -45,8 +48,10 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Module;
+import com.google.inject.TypeLiteral;
+import com.google.inject.name.Names;
 
-abstract class AbstractAuthenticationProviderTest extends EasyMockSupport {
+public abstract class AbstractAuthenticationProviderTest extends EasyMockSupport {
 
   static final String TEST_USER_NAME = "userName";
 
@@ -196,6 +201,8 @@ abstract class AbstractAuthenticationProviderTest extends EasyMockSupport {
         bind(OsFamily.class).toInstance(createNiceMock(OsFamily.class));
         bind(HookService.class).toInstance(createMock(HookService.class));
         bind(HookContextFactory.class).toInstance(createMock(HookContextFactory.class));
+        bind(new TypeLiteral<Encryptor<AmbariServerConfiguration>>() {}).annotatedWith(Names.named("AmbariServerConfigurationEncryptor")).toInstance(Encryptor.NONE);
+        bind(AmbariLdapConfigurationProvider.class).toInstance(createMock(AmbariLdapConfigurationProvider.class));
 
         bind(Users.class).toInstance(users);
         bind(Configuration.class).toInstance(configuration);

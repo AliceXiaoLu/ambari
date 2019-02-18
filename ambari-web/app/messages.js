@@ -29,7 +29,7 @@ Em.I18n.translations = {
   'app.redirectIssuePopup.header': 'Login Redirect Issue',
   'app.redirectIssuePopup.body': 'For single sign-on, make sure that Knox Gateway and Ambari Server are located on the same host or subdomain.' +
     '<br/>Alternatively login as an Ambari local user using the local login page.<br />' +
-    '<a href="{0}" target="_blank">{0}</a>',
+    '<a rel="noopener noreferrer" href="{0}" target="_blank">{0}</a>',
 
   'app.loadingPlaceholder': 'Loading...',
   'app.versionMismatchAlert.title': 'Ambari Server / Web Client Version Mismatch',
@@ -370,6 +370,7 @@ Em.I18n.translations = {
   'common.critical.error': 'Critical',
   'common.with': 'with',
   'common.propertyName': 'Property Name',
+  'common.configure.restart': 'Configure Restart',
 
   'models.alert_instance.tiggered.verbose': "Occurred on {0} <br> Checked on {1}",
   'models.alert_definition.triggered.verbose': "Occurred on {0}",
@@ -465,8 +466,17 @@ Em.I18n.translations = {
   'popup.clusterCheck.failedOn': 'Failed on: ',
   'popup.clusterCheck.reason': 'Reason: ',
   'popup.clusterCheck.Upgrade.header': 'Upgrade to {0}',
-  'popup.clusterCheck.Upgrade.fail.title': 'Requirements',
+  'popup.clusterCheck.Upgrade.fail.title': 'Critical Requirements',
   'popup.clusterCheck.Upgrade.fail.alert': 'You <strong>must</strong> meet these requirements before you can proceed.',
+  'popup.clusterCheck.Upgrade.fail.auto_start_disabled': 'Auto Start must be disabled before performing an Upgrade.',
+  'popup.clusterCheck.Upgrade.fail.auto_start_disabled.action_btn': 'Disable autostart',
+  'popup.clusterCheck.Upgrade.fail.services_up': 'The following services should be started:',
+  'popup.clusterCheck.Upgrade.fail.services_up.action_btn': 'Start Services',
+  'popup.clusterCheck.Upgrade.fail.maintanance': 'The following hosts must not be in in Maintenance Mode since they host Master components:',
+  'popup.clusterCheck.Upgrade.fail.maintanance.action_btn': 'Turn off MM',
+  'popup.clusterCheck.Upgrade.fail.atlasInstalled.action_btn': 'Remove Atlas',
+  'popup.clusterCheck.Upgrade.fail.atlasInstalled': 'Atlas should be removed.',
+  'popup.clusterCheck.Upgrade.services.checks' : 'Services Checks',
   'popup.clusterCheck.Upgrade.bypassed-failures.title': 'Errors that can be bypassed',
   'popup.clusterCheck.Upgrade.bypassed-failures.alert': 'Errors are allowed to be bypassed since config stack.upgrade.bypass.prechecks is set to true. It is strongly encouraged to look into these failures.',
   'popup.clusterCheck.Upgrade.warning.title': 'Warnings',
@@ -475,6 +485,7 @@ Em.I18n.translations = {
   'popup.clusterCheck.Upgrade.configsMerge.alert': 'During upgrade, the following configuration changes will be applied.',
   'popup.clusterCheck.Upgrade.configsMerge.configType': 'Config Type',
   'popup.clusterCheck.Upgrade.configsMerge.propertyName': 'Property Name',
+  'popup.clusterCheck.Upgrade.configsMerge.serviceName': 'Service Name',
   'popup.clusterCheck.Upgrade.configsMerge.currentValue': 'Current Value',
   'popup.clusterCheck.Upgrade.configsMerge.recommendedValue': 'Recommended Value',
   'popup.clusterCheck.Upgrade.configsMerge.resultingValue': 'Resulting Value',
@@ -594,7 +605,6 @@ Em.I18n.translations = {
   'services.summary.selectHostForComponent': 'Select the host to add {0} component',
   'services.summary.allHostsAlreadyRunComponent': 'All hosts already running {0} component',
 
-  'topnav.logo.href':'/#/main/dashboard',
   'topnav.help.href':'https://cwiki.apache.org/confluence/display/AMBARI/Ambari',
 
   'installer.header':'Cluster Install Wizard',
@@ -644,6 +654,9 @@ Em.I18n.translations = {
   'installer.step1.useLocalRepo.uploadFile': 'Upload Version Definition File',
   'installer.step1.useLocalRepo.uploadFile.error.title': 'Upload Version Definition File Error',
   'installer.step1.useLocalRepo.getSurpottedOs.error.title': 'Cannot get supported OS types',
+  'installer.step1.useLocalRepo.getSurpottedOs.stackError.title': 'Stack {0} {1} errors ',
+  'installer.step1.useLocalRepo.getSurpottedOs.noStacksError.title': 'There is no available Stack to install',
+  'installer.step1.useLocalRepo.getSurpottedOs.noStacksError.body': 'All stacks contains errors. Installation can\'t be completed',
   'installer.step1.useLocalRepo.addRepo.button': 'Add Repository',
   'installer.step1.addVersion': 'Add Version',
   'installer.step1.addVersion.stackChanged.popup.body': 'Stack is changed from {0} to {1}.',
@@ -683,6 +696,7 @@ Em.I18n.translations = {
   'installer.step1.invalidURLAttention': '<b>Attention:</b> Please make sure all repository URLs are valid before proceeding.',
   'installer.step1.checkAtLeastOneAttention': '<b>Attention:</b> Please check at least one repository.',
   'installer.step1.retryRepoUrls': 'Click <b>here</b> to retry.',
+  'installer.step1.noVersionDefinitions': 'Unable to load versions data from server.',
 
   'installer.step2.header':'Install Options',
   'installer.step2.body':'Enter the list of hosts to be included in the cluster and provide your SSH key.',
@@ -903,8 +917,12 @@ Em.I18n.translations = {
   'installer.step4.limitedFunctionality.popup.header':'Limited Functionality Warning',
   'installer.step4.ambariMetricsCheck.popup.header': 'Ambari Metrics',
   'installer.step4.ambariMetricsCheck.popup.body':'Ambari Metrics collects metrics from the cluster and makes them available to Ambari.  If you do not install Ambari Metrics service, metrics will not be accessible from Ambari.  Are you sure you want to proceed without Ambari Metrics?',
-  'installer.step4.ambariInfraCheck.popup.header': 'Ambari Infra',
-  'installer.step4.ambariInfraCheck.popup.body':'Since Ambari Infra is not selected, you must supply your own Solr to make Atlas work. Are you sure you want to proceed?',
+  'installer.step4.ambariRangerInfraCheck.popup.header': 'Infra Solr',
+  'installer.step4.ambariRangerInfraCheck.popup.body':'In order for Ranger to work, Solr is required. Either select Infra Solr to be added to the cluster, or ensure you configure your own during the Customize Services step.',
+  'installer.step4.ambariAtlasInfraCheck.popup.header': 'Infra Solr',
+  'installer.step4.ambariAtlasInfraCheck.popup.body':'In order for Atlas to work, Solr is required. Either select Infra Solr to be added to the cluster, or ensure you configure your own during the Customize Services step.',
+  'installer.step4.ambariAtlasHbaseCheck.popup.header': 'HBase',
+  'installer.step4.ambariAtlasHbaseCheck.popup.body':'In order for Atlas to work, HBase is required. Either select HBase to be added to the cluster, or ensure you configure your own during the Customize Services step.',
   'installer.step4.ambariLogsearchCheck.popup.header': 'Ambari Logsearch',
   'installer.step4.ambariLogsearchCheck.popup.body':'Since Ambari Infra is not selected, you must supply your own Solr to make Log Search work. Are you sure you want to proceed?',
   'installer.step4.smartSenseCheck.popup.header': 'Apache SmartSense',
@@ -913,7 +931,7 @@ Em.I18n.translations = {
   'will need to collect configuration and logs manually for troubleshooting support cases. ' +
   'Are you sure you want to proceed without SmartSense?',
   'installer.step4.rangerCheck.popup.header': 'Apache Ranger',
-  'installer.step4.rangerCheck.popup.body':'Apache Ranger provides fine grained authorization and audit of access attempts for many Hadoop ecosystem services. If you do not install the Apache Ranger Service, the security of your cluster will be diminished. Are you sure you want to proceed without it? ',
+  'installer.step4.rangerCheck.popup.body':'Apache Ranger provides fine grained authorization and audit of access attempts for many Hadoop ecosystem services. If you do not install the Apache Ranger Service and enable Kerberos, the security of your cluster will be diminished. Are you sure you want to proceed without it? ',
   'installer.step4.atlasCheck.popup.header': 'Apache Atlas',
   'installer.step4.atlasCheck.popup.body':'Apache Atlas provides strong data governance, lineage and metadata management for many hadoop ecosystem services. If you do not install Apache Atlas service, the data governance capabilities of you cluster will be diminished. Are you sure you want to proceed without it? ',
 
@@ -1314,9 +1332,8 @@ Em.I18n.translations = {
   'admin.kerberos.wizard.step1.option.ad.condition.5': 'The Java Cryptography Extensions (JCE) have been setup on the Ambari Server host and all hosts in the cluster.',
   'admin.kerberos.wizard.step1.option.ipa': 'Existing IPA',
   'admin.kerberos.wizard.step1.option.ipa.condition.1': 'All cluster hosts are joined to the IPA domain and hosts are registered in DNS',
-  'admin.kerberos.wizard.step1.option.ipa.condition.2': 'A password policy is in place that sets no expiry for created principals',
-  'admin.kerberos.wizard.step1.option.ipa.condition.3': 'If you do not plan on using Ambari to manage the krb5.conf, ensure the following is set in each krb5.conf file in your cluster: default_ccache_name = /tmp/krb5cc_%{uid}',
-  'admin.kerberos.wizard.step1.option.ipa.condition.4': 'The Java Cryptography Extensions (JCE) have been setup on the Ambari Server host and all hosts in the cluster.',
+  'admin.kerberos.wizard.step1.option.ipa.condition.2': 'If you do not plan on using Ambari to manage the krb5.conf, ensure the following is set in each krb5.conf file in your cluster: default_ccache_name = /tmp/krb5cc_%{uid}',
+  'admin.kerberos.wizard.step1.option.ipa.condition.3': 'The Java Cryptography Extensions (JCE) have been setup on the Ambari Server host and all hosts in the cluster.',
   'admin.kerberos.wizard.step1.prerequisites.label': 'Following prerequisites needs to be checked to progress ahead in the wizard.',
   'admin.kerberos.wizard.step2.info.body': 'Please configure kerberos related properties.',
   'admin.kerberos.wizard.step3.task0.title': 'Install Kerberos Client',
@@ -1402,16 +1419,31 @@ Em.I18n.translations = {
   'admin.manageJournalNode.wizard.step7.notice.inProgress': 'Please wait while services are started',
   'admin.manageJournalNode.wizard.step7.notice.completed':'Completed update to JournalNodes.',
 
+  'admin.manageJournalNode.wizard.step3.error.multipleNameSpaces.nameNodes': 'Some NameNodes are in the process of being stopped. Please make sure that NameNodes are running to create checkpoints successfully.',
+  'admin.manageJournalNode.wizard.step3.body.singleNameSpace.safeModeText': 'Put the NameNode in Safe Mode (read-only mode)',
+  'admin.manageJournalNode.wizard.step3.body.multipleNameSpaces.safeModeText': 'Put the NameNodes in Safe Mode (read-only mode)',
+  'admin.manageJournalNode.wizard.step3.body.singleNameSpace.safeModeCommand': 'sudo su {0} -l -c \'hdfs dfsadmin -safemode enter\'',
+  'admin.manageJournalNode.wizard.step3.body.multipleNameSpaces.safeModeCommand': 'sudo su {0} -l -c \'hdfs dfsadmin -fs hdfs://{1} -safemode enter\'',
+  'admin.manageJournalNode.wizard.step3.body.singleNameSpace.checkPointText': 'Once in Safe Mode, create a Checkpoint',
+  'admin.manageJournalNode.wizard.step3.body.multipleNameSpaces.checkPointText': 'Once in Safe Mode, create Checkpoints',
+  'admin.manageJournalNode.wizard.step3.body.singleNameSpace.checkPointCommand': 'sudo su {0} -l -c \'hdfs dfsadmin -saveNamespace\'',
+  'admin.manageJournalNode.wizard.step3.body.multipleNameSpaces.checkPointCommand': 'sudo su {0} -l -c \'hdfs dfsadmin -fs hdfs://{1} -saveNamespace\'',
+  'admin.manageJournalNode.wizard.step3.body.singleNameSpace.proceed': 'You will be able to proceed once Ambari detects that the NameNode is in Safe Mode and the Checkpoint has been created successfully.',
+  'admin.manageJournalNode.wizard.step3.body.multipleNameSpaces.proceed': 'You will be able to proceed once Ambari detects that the NameNodes are in Safe Mode and the Checkpoints have been created successfully.',
+  'admin.manageJournalNode.wizard.step3.body.singleNameSpace.recentCheckPoint': 'If the <b>Next</b> button is enabled before you run the <b>"Step 3: Save Namespace"</b> command, it means there is a recent Checkpoint already and you may proceed without running the <b>"Step 3: Save Namespace"</b> command.',
+  'admin.manageJournalNode.wizard.step3.body.multipleNameSpaces.recentCheckPoint': 'If the <b>Next</b> button is enabled before you run the <b>"Step 3: Save Namespace"</b> commands, it means there are recent Checkpoints already and you may proceed without running the <b>"Step 3: Save Namespace"</b> commands.',
   'admin.manageJournalNode.wizard.step3.body':
   '<ol>' +
-  '<li>Login to the NameNode host <b>{1}</b>.</li>' +
-  '<li>Put the NameNode in Safe Mode (read-only mode):' +
-  '<div class="code-snippet">sudo su {0} -l -c \'hdfs dfsadmin -safemode enter\'</div></li>' +
-  '<li>Once in Safe Mode, create a Checkpoint:' +
-  '<div class="code-snippet">sudo su {0} -l -c \'hdfs dfsadmin -saveNamespace\'</div></li>' +
-  '<li>You will be able to proceed once Ambari detects that the NameNode is in Safe Mode and the Checkpoint has been created successfully.</li>'+
-  '<div class="alert alert-warn">If the <b>Next</b> button is enabled before you run the <b>"Step 3: Save Namespace"</b> command, it means there is a recent Checkpoint already and you may proceed without running the <b>"Step 3: Save Namespace"</b> command.</div>' +
+  '<li>Login to the NameNode host <b>{0}</b>.</li>' +
+  '<li>{1}:' +
+  '<div class="code-snippet">{2}</div></li>' +
+  '<li>{3}:' +
+  '<div class="code-snippet">{4}</div></li>' +
+  '<li>{5}</li>'+
+  '<div class="alert alert-warn">{6}</div>' +
   '</ol>',
+  'admin.manageJournalNode.wizard.step3.checkPointsNotCreated': 'Checkpoints not created yet',
+  'admin.manageJournalNode.wizard.step3.checkPointsCreated': 'Checkpoints created',
 
   'admin.manageJournalNode.wizard.step5.body':
   '<ol>' +
@@ -1439,6 +1471,7 @@ Em.I18n.translations = {
   'admin.highAvailability.error.zooKeeperNum':'You must have at least 3 ZooKeeper Servers in your cluster to enable NameNode HA.',
   'admin.rm_highAvailability.error.hostsNum':'You must have at least 3 hosts in your cluster to enable ResourceManager HA.',
   'admin.rm_highAvailability.error.zooKeeperNum':'You must have at least 3 ZooKeeper Servers in your cluster to enable ResourceManager HA.',
+  'admin.rm_highAvailability.error.resourceManagerStarted':'ResourceManager must be running before you enable ResourceManager HA.',
   'admin.rm_highAvailability.closePopup':'Enable ResourceManager HA Wizard is in progress. You must allow the wizard to complete for Ambari to be in usable state. If you choose to quit, you must follow manual instructions to complete or revert enabling ResourceManager HA as documented in the Ambari User Guide. Are you sure you want to exit the wizard?',
 
   'admin.highAvailability.wizard.header':'Enable NameNode HA Wizard',
@@ -1452,7 +1485,7 @@ Em.I18n.translations = {
   'admin.highAvailability.wizard.step2.header':'Select Hosts',
   'admin.highAvailability.wizard.step3.header':'Review',
   'admin.highAvailability.wizard.step4.header':'Create Checkpoint',
-  'admin.highAvailability.wizard.step4.error.nameNode':'NameNode is in the process of being stopped. Please make sure that namenode is running to create checkpoint successfully.',
+  'admin.highAvailability.wizard.step4.error.nameNode':'NameNode is in the process of being stopped. Please make sure that NameNode is running to create checkpoint successfully.',
   'admin.highAvailability.wizard.step5.header':'Configure Components',
   'admin.highAvailability.wizard.step6.header':'Initialize JournalNodes',
   'admin.highAvailability.wizard.step7.header':'Start Components',
@@ -1808,9 +1841,10 @@ Em.I18n.translations = {
   'admin.stackVersions.manageVersions': "Manage Versions",
   'admin.stackVersions.manageVersions.popup.body': 'You are about to leave the <b>Cluster Management</b> interface' +
     ' and go to the <b>Ambari Administration</b> interface. You can return to cluster management by using the' +
-    ' “Go to Dashboard” link in the Ambari Administration > Clusters section.',
+    ' “Dashboard” link in the Ambari Administration > Clusters section.',
   'admin.stackVersions.version.installNow': "Install Packages",
   'admin.stackVersions.version.reinstall': "Reinstall Packages",
+  'admin.stackVersions.version.installError': "Installation Error!",
   'admin.stackVersions.version.performUpgrade': "Perform Upgrade",
   'admin.stackVersions.version.preUpgradeCheck': 'Pre-Upgrade Check',
   'admin.stackVersions.version.upgrade.pause': "Upgrade: Action Required",
@@ -1828,7 +1862,12 @@ Em.I18n.translations = {
   'admin.stackUpgrade.state.paused.fail.body': "Upgrade could not be paused. Try again later.",
   'admin.stackDowngrade.state.paused.fail.header': "Pause Downgrade failed",
   'admin.stackDowngrade.state.paused.fail.body': "Downgrade could not be paused. Try again later.",
-
+  'admin.stackVersions.version.errors.outOfSync.title': 'Host component out of sync',
+  'admin.stackVersions.version.errors.outOfSync.desc': 'One of more host components did not report the version that Ambari expected.' +
+  ' Please re-install the failed host component, or remove it.',
+  'admin.stackVersions.version.errors.outOfSync.reinstall.title': 'Confirm Re-Install',
+  'admin.stackVersions.version.errors.outOfSync.remove.title': 'Confirm Remove',
+  
   'admin.stackVersions.version.service.notUpgradable': "The version of this service included in this repository is already installed in the cluster.",
   'admin.stackVersions.version.service.notSupported': "This service is unsupported in the current version of the stack.",
 
@@ -2011,7 +2050,7 @@ Em.I18n.translations = {
   'services.service.summary.safeModeStatus.notInSafeMode':'Not in safe mode',
   'services.service.summary.dataNodes':'DataNodes',
   'services.service.summary.diskCapacity':'HDFS Disk Capacity',
-  'services.service.summary.blocksTotal':'Blocks (total)',
+  'services.service.summary.blocks':'Blocks',
   'services.service.summary.blockErrors':'Block Errors',
   'services.service.summary.totalFiles':'Total Files + Dirs',
   'services.service.summary.jobTracker':'JobTracker',
@@ -2324,7 +2363,7 @@ Em.I18n.translations = {
   'services.service.config.configHistory.makeCurrent.message': 'Created from service config version {0}',
   'services.service.config.configHistory.comparing': 'Comparing Changes in',
   'services.service.config.setRecommendedValue': 'Set Recommended',
-  'services.service.config.database.msg.jdbcSetup.detailed': 'To use {0} with Hive, you must <a href="{3}" target="_blank">' +
+  'services.service.config.database.msg.jdbcSetup.detailed': 'To use {0} with {6}, you must <a rel="noopener noreferrer" href="{3}" target="_blank">' +
     'download the {4} from {0}</a>. Once downloaded to the Ambari Server host, run: <br/>' +
     '<b>ambari-server setup --jdbc-db={1} --jdbc-driver=/path/to/{1}/{2}</b>',
 
@@ -2864,6 +2903,7 @@ Em.I18n.translations = {
   'hosts.host.maintainance.stopAllComponents.context': 'Stop All Host Components',
   'hosts.host.maintainance.startAllComponents.context': 'Start All Host Components',
   'hosts.host.maintainance.reinstallFailedComponents.context': 'Reinstall Failed Components',
+  'hosts.host.maintainance.removeFailedComponents.context': 'Remove Failed Components',
   'hosts.host.recover.initAllComponents.context': 'Init All Host Components',
   'hosts.host.recover.installAllComponents.context': 'Install All Host Components',
   'hosts.host.recover.regenerateKeytabs.context': 'Regenerate keytabs',
@@ -3057,6 +3097,7 @@ Em.I18n.translations = {
   'dashboard.services.hdfs.nodes.heapUsed':'{0} / {1}',
 
   'dashboard.services.hdfs.chart.label':'Capacity (Used/Total)',
+  'dashboard.services.hdfs.blockErrors.total': 'total',
   'dashboard.services.hdfs.blockErrors.corrupt': 'corrupt replica',
   'dashboard.services.hdfs.blockErrors.replicated': 'under replicated',
   'dashboard.services.hdfs.blockErrors.missing': 'missing',
@@ -3082,6 +3123,8 @@ Em.I18n.translations = {
   'dashboard.services.yarn.nodes.heapUsedPercent':'{0}%',
   'dashboard.services.yarn.clients':'YARN Clients',
   'dashboard.services.yarn.client':'YARN Client',
+  'dashboard.services.hdfs.clients':'HDFS Clients',
+  'dashboard.services.hdfs.client':'HDFS Client',
   'dashboard.services.yarn.resourceManager.uptime':'ResourceManager Uptime',
   'dashboard.services.yarn.resourceManager.active':'Active ResourceManager',
   'dashboard.services.yarn.resourceManager.standby':'Standby ResourceManager',
@@ -3247,6 +3290,25 @@ Em.I18n.translations = {
   'rollingrestart.context.allOnSelectedHost':'Restart all components on {0}',
   'rollingrestart.context.selectedComponentOnSelectedHost':'Restart {0}',
   'rollingrestart.context.default':'Restart components',
+
+  'service.restart.choose.text': 'Please choose which type of restart should be performed.',
+  'service.rolling.restart.choose.info': 'Critical services remain running while the upgrade is performed. </br>Minimized disruption, but is a slower upgrade.',
+  'service.express.restart.choose.info': 'Services are stopped when this upgrade is performed. </br>Incurs downtime, but is a faster upgrade.',
+  'service.restart.show.advanced.info': 'Show advanced configurations options <p style="font-size: 12px; color: #999999; display: inline;">(Restart by batches/hosts, interval between restarts, etc.)</p>',
+  'service.restart.rolling.restart.hosts.by': 'RESTART HOSTS BY',
+  'service.restart.rolling.batchesOfHosts': 'Batches of Hosts',
+  'service.restart.rolling.rackByRack': 'Rack by Rack',
+  'service.restart.rolling.advanced.noOfHosts': 'NUMBER OF HOSTS IN A BATCH',
+  'service.restart.rolling.advanced.batchIntervalHosts': 'INTERVAL BETWEEN BATCHES (SEC)',
+  'service.restart.rolling.advanced.percentRacks': '% OF RACKS STARTED AT A TIME',
+  'service.restart.rolling.advanced.batchIntervalRacks': 'INTERVAL BETWEEN RACKS (SEC)',
+  'service.restart.rolling.advanced.automatic.retry': 'Automatically retry on failed hosts',
+  'service.restart.rolling.advanced.noOfRetries': 'NUMBER OF RETRIES PER HOST',
+  'service.restart.rolling.advanced.max.failures.tolerated': 'MAXIMUM FAILURES TOLERATED<p style="font-size: 11px;">(Restart process is suspended after threshold is reached)</p>',
+  'service.restart.rolling.advanced.max.failures.batch': 'MAXIMUM FAILURES TOLERATED/BATCH',
+  'service.restart.rolling.advanced.max.failures.rack': 'MAXIMUM FAILURES TOLERATED/RACK',
+  'service.restart.rolling.advanced.suppress.alerts': 'Suppress alerts during rolling restart',
+  'service.restart.rolling.advanced.pause.after.first': 'Pause after first batch',
 
   'rolling.command.context': 'Rolling set {0} to state "{1}" - batch {2} of {3}',
   'rolling.nothingToDo.header': 'Nothing to do',

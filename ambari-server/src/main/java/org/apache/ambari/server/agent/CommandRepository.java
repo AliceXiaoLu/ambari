@@ -83,8 +83,13 @@ public class CommandRepository {
   /**
    * @param version the repo version
    */
-  public void setRepositoryVersion(String version) {
+  public void setRepoVersion(String version) {
     m_repoVersion = version;
+  }
+
+
+  public String getRepoVersion(){
+    return m_repoVersion;
   }
 
   /**
@@ -272,6 +277,7 @@ public class CommandRepository {
     private List<String> m_applicableServices;
 
     @SerializedName("tags")
+    @JsonProperty("tags")
     private Set<RepoTag> m_tags;
 
 

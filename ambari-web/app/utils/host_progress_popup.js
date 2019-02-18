@@ -192,7 +192,7 @@ App.HostPopup = Em.Object.create({
    */
   abortIcon: Em.View.extend({
     tagName: 'a',
-    classNames: ['action', 'abort-icon'],
+    classNames: ['abort-icon'],
     template: Em.Handlebars.compile('<span class="icon icon-remove-circle"></span>'),
     click: function () {
       this.get('controller').abortRequest(this.get('servicesInfo'));
@@ -316,7 +316,8 @@ App.HostPopup = Em.Object.create({
       serviceName: serviceName,
       dataSourceController: controller,
       isBackgroundOperations: isBackgroundOperations,
-      inputData: controller.get("services")
+      inputData: controller.get("services"),
+      servicesInfo: []
     });
 
     if (isBackgroundOperations) {

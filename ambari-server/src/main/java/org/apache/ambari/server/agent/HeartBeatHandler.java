@@ -23,25 +23,31 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
+import javax.inject.Named;
+
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.HostNotFoundException;
 import org.apache.ambari.server.actionmanager.ActionManager;
+import org.apache.ambari.server.agent.stomp.dto.ComponentVersionReports;
 import org.apache.ambari.server.agent.stomp.dto.HostStatusReport;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.events.AgentActionEvent;
+import org.apache.ambari.server.events.AgentConfigsUpdateEvent;
+import org.apache.ambari.server.events.EncryptionKeyUpdateEvent;
+import org.apache.ambari.server.events.HostRegisteredEvent;
+import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
 import org.apache.ambari.server.events.publishers.STOMPUpdatePublisher;
+import org.apache.ambari.server.security.encryption.Encryptor;
 import org.apache.ambari.server.state.AgentVersion;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.ComponentInfo;
-import org.apache.ambari.server.state.ConfigHelper;
 import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.HostState;
 import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.StackId;
-import org.apache.ambari.server.state.alert.AlertDefinitionHash;
 import org.apache.ambari.server.state.alert.AlertHelper;
 import org.apache.ambari.server.state.fsm.InvalidStateTransitionException;
 import org.apache.ambari.server.state.host.HostHealthyHeartbeatEvent;
@@ -70,7 +76,7 @@ public class HeartBeatHandler {
 
   private static final Pattern DOT_PATTERN = Pattern.compile("\\.");
   private final Clusters clusterFsm;
-  private final ActionManager actionManager;
+  private final Encryptor<AgentConfigsUpdateEvent> encryptor;
   private HeartbeatMonitor heartbeatMonitor;
   private HeartbeatProcessor heartbeatProcessor;
 
@@ -81,19 +87,13 @@ public class HeartBeatHandler {
   private AmbariMetaInfo ambariMetaInfo;
 
   @Inject
-  private ConfigHelper configHelper;
-
-  @Inject
-  private AlertDefinitionHash alertDefinitionHash;
-
-  @Inject
-  private RecoveryConfigHelper recoveryConfigHelper;
-
-  @Inject
   private STOMPUpdatePublisher STOMPUpdatePublisher;
 
   @Inject
   private AgentSessionManager agentSessionManager;
+
+  @Inject
+  private AmbariEventPublisher ambariEventPublisher;
 
   @Inject
   private AlertHelper alertHelper;
@@ -103,12 +103,12 @@ public class HeartBeatHandler {
   private Map<String, HeartBeatResponse> hostResponses = new ConcurrentHashMap<>();
 
   @Inject
-  public HeartBeatHandler(Clusters fsm, ActionManager am,
+  public HeartBeatHandler(Clusters fsm, ActionManager am, @Named("AgentConfigEncryptor") Encryptor<AgentConfigsUpdateEvent> encryptor,
                           Injector injector) {
-    clusterFsm = fsm;
-    actionManager = am;
-    heartbeatMonitor = new HeartbeatMonitor(fsm, am, 60000, injector);
-    heartbeatProcessor = new HeartbeatProcessor(fsm, am, heartbeatMonitor, injector); //TODO modify to match pattern
+    this.clusterFsm = fsm;
+    this.encryptor = encryptor;
+    this.heartbeatMonitor = new HeartbeatMonitor(fsm, am, 60000, injector);
+    this.heartbeatProcessor = new HeartbeatProcessor(fsm, am, heartbeatMonitor, injector); //TODO modify to match pattern
     injector.injectMembers(this);
   }
 
@@ -251,6 +251,10 @@ public class HeartBeatHandler {
     }
   }
 
+  public void handleComponentVersionReports(ComponentVersionReports componentVersionReports, String hostname) throws AmbariException {
+    heartbeatProcessor.processVersionReports(componentVersionReports, hostname);
+  }
+
   protected void processRecoveryReport(RecoveryReport recoveryReport, String hostname) throws AmbariException {
     LOG.debug("Received recovery report: {}", recoveryReport);
     Host host = clusterFsm.getHost(hostname);
@@ -346,6 +350,15 @@ public class HeartBeatHandler {
         null != register.getPublicHostname() ? register.getPublicHostname() : hostname,
         new AgentVersion(register.getAgentVersion()), now, register.getHardwareProfile(),
         register.getAgentEnv(), register.getAgentStartTime()));
+
+    // publish the event
+    HostRegisteredEvent event = new HostRegisteredEvent(hostname, hostObject.getHostId());
+    ambariEventPublisher.publish(event);
+
+    if (config.shouldEncryptSensitiveData()) {
+      EncryptionKeyUpdateEvent encryptionKeyUpdateEvent = new EncryptionKeyUpdateEvent(encryptor.getEncryptionKey());
+      STOMPUpdatePublisher.publish(encryptionKeyUpdateEvent);
+    }
 
     RegistrationResponse response = new RegistrationResponse();
 

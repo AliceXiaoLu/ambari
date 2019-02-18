@@ -54,6 +54,7 @@ public abstract class STOMPEvent {
     CONFIGS("events.configs"),
     HOSTCOMPONENT("events.hostcomponents"),
     NAMEDHOSTCOMPONENT("events.hostrolecommands.named"),
+    NAMEDTASK("events.tasks.named"),
     REQUEST("events.requests"),
     SERVICE("events.services"),
     HOST("events.hosts"),
@@ -61,7 +62,8 @@ public abstract class STOMPEvent {
     ALERT_DEFINITIONS("alert_definitions"),
     UPGRADE("events.upgrade"),
     COMMAND("events.commands"),
-    AGENT_ACTIONS("events.agentactions");
+    AGENT_ACTIONS("events.agentactions"),
+    ENCRYPTION_KEY_UPDATE("events.encryption_key_update");
 
     /**
      * Is used to collect info about event appearing frequency.
@@ -75,5 +77,9 @@ public abstract class STOMPEvent {
     public String getMetricName() {
       return metricName;
     }
+  }
+
+  public String completeDestination(String destination) {
+    return destination;
   }
 }

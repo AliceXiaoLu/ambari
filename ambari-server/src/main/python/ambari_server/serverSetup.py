@@ -46,7 +46,7 @@ from ambari_server.serverConfiguration import configDefaults, JDKRelease, get_st
 from ambari_server.serverUtils import is_server_runing
 from ambari_server.setupSecurity import adjust_directory_permissions
 from ambari_server.userInput import get_YN_input, get_validated_string_input
-from ambari_server.utils import locate_file, update_latest_in_repoinfos_for_all_stacks, get_json_url_from_repo_file
+from ambari_server.utils import locate_file, update_latest_in_repoinfos_for_stacks, get_json_url_from_repo_file
 from ambari_server.serverClassPath import ServerClassPath
 from ambari_server.ambariPath import AmbariPath
 
@@ -915,7 +915,7 @@ def configure_os_settings():
 def _check_jdbc_options(options):
   return (options.jdbc_driver is not None and options.jdbc_db is not None)
 
-def proceedJDBCProperties(args):
+def setup_jdbc(args):
   if not os.path.isfile(args.jdbc_driver):
     err = "File {0} does not exist!".format(args.jdbc_driver)
     raise FatalException(1, err)
@@ -1164,7 +1164,7 @@ def setup(options):
 
   # proceed jdbc properties if they were set
   if _check_jdbc_options(options):
-    proceedJDBCProperties(options)
+    setup_jdbc(options)
     return
 
   (retcode, err) = disable_security_enhancements()
@@ -1179,10 +1179,6 @@ def setup(options):
 
   print configDefaults.MESSAGE_CHECK_FIREWALL
   check_firewall()
-
-  # proceed jdbc properties if they were set
-  if _check_jdbc_options(options):
-    proceedJDBCProperties(options)
 
   print 'Checking JDK...'
   try:
@@ -1221,7 +1217,7 @@ def setup(options):
     print "Ambari repo file contains latest json url {0}, updating stacks repoinfos with it...".format(json_url)
     properties = get_ambari_properties()
     stack_root = get_stack_location(properties)
-    update_latest_in_repoinfos_for_all_stacks(stack_root, json_url)
+    update_latest_in_repoinfos_for_stacks(stack_root, json_url)
   else:
     print "Ambari repo file doesn't contain latest json url, skipping repoinfos modification"
 

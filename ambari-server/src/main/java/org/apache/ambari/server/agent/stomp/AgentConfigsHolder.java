@@ -16,12 +16,14 @@
  * limitations under the License.
  */
 package org.apache.ambari.server.agent.stomp;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.events.AgentConfigsUpdateEvent;
 import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
+import org.apache.ambari.server.security.encryption.Encryptor;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.ConfigHelper;
 import org.apache.ambari.server.state.Host;
@@ -33,10 +35,12 @@ import org.slf4j.LoggerFactory;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 
 @Singleton
 public class AgentConfigsHolder extends AgentHostDataHolder<AgentConfigsUpdateEvent> {
   public static final Logger LOG = LoggerFactory.getLogger(AgentConfigsHolder.class);
+  private final Encryptor<AgentConfigsUpdateEvent> encryptor;
 
   @Inject
   private ConfigHelper configHelper;
@@ -45,7 +49,8 @@ public class AgentConfigsHolder extends AgentHostDataHolder<AgentConfigsUpdateEv
   private Provider<Clusters> clusters;
 
   @Inject
-  public AgentConfigsHolder(AmbariEventPublisher ambariEventPublisher) {
+  public AgentConfigsHolder(AmbariEventPublisher ambariEventPublisher, @Named("AgentConfigEncryptor") Encryptor<AgentConfigsUpdateEvent> encryptor) {
+    this.encryptor = encryptor;
     ambariEventPublisher.register(this);
   }
 
@@ -58,9 +63,9 @@ public class AgentConfigsHolder extends AgentHostDataHolder<AgentConfigsUpdateEv
     return configHelper.getHostActualConfigsExcludeCluster(hostId, clusterId);
   }
 
-  protected boolean handleUpdate(AgentConfigsUpdateEvent update) throws AmbariException {
-    setData(update, update.getHostId());
-    return true;
+  @Override
+  protected AgentConfigsUpdateEvent handleUpdate(AgentConfigsUpdateEvent current, AgentConfigsUpdateEvent update) {
+    return update;
   }
 
   public void updateData(Long clusterId, List<Long> hostIds) throws AmbariException {
@@ -75,7 +80,6 @@ public class AgentConfigsHolder extends AgentHostDataHolder<AgentConfigsUpdateEv
 
     for (Long hostId : hostIds) {
       AgentConfigsUpdateEvent agentConfigsUpdateEvent = configHelper.getHostActualConfigs(hostId);
-      agentConfigsUpdateEvent.setHostId(hostId);
       updateData(agentConfigsUpdateEvent);
     }
   }
@@ -91,9 +95,8 @@ public class AgentConfigsHolder extends AgentHostDataHolder<AgentConfigsUpdateEv
 
   @Override
   protected void regenerateDataIdentifiers(AgentConfigsUpdateEvent data) {
-    data.setHash(null);
-    data.setTimestamp(null);
-    data.setHash(getHash(data));
+    data.setHash(getHash(data, encryptor.getEncryptionKey()));
+    encryptor.encryptSensitiveData(data);
     data.setTimestamp(System.currentTimeMillis());
   }
 

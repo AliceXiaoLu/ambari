@@ -608,6 +608,7 @@ SECURITY_KEY_IS_PERSISTED = "security.master.key.ispersisted"
 SECURITY_KEY_ENV_VAR_NAME = "AMBARI_SECURITY_MASTER_KEY"
 SECURITY_MASTER_KEY_FILENAME = "master"
 SECURITY_IS_ENCRYPTION_ENABLED = "security.passwords.encryption.enabled"
+SECURITY_SENSITIVE_DATA_ENCRYPTON_ENABLED = "security.server.encrypt_sensitive_data"
 SECURITY_KERBEROS_JASS_FILENAME = "krb5JAASLogin.conf"
 
 SECURITY_PROVIDER_GET_CMD = "{0} -cp {1} " + \
@@ -623,6 +624,11 @@ SECURITY_PROVIDER_PUT_CMD = "{0} -cp {1} " + \
 SECURITY_PROVIDER_KEY_CMD = "{0} -cp {1} " + \
                             "org.apache.ambari.server.security.encryption" + \
                             ".MasterKeyServiceImpl {2} {3} {4} " + \
+                            "> " + configDefaults.SERVER_OUT_FILE + " 2>&1"
+
+SECURITY_SENSITIVE_DATA_ENCRYPTON_CMD = "{0} -cp {1} " + \
+                            "org.apache.ambari.server.security.encryption.SensitiveDataEncryption" + \
+                            " {2} " + \
                             "> " + configDefaults.SERVER_OUT_FILE + " 2>&1"
 
 
@@ -840,7 +846,7 @@ def update_database_name_property(upgrade=False):
     if properties == -1:
       err = "Error getting ambari properties"
       raise FatalException(-1, err)
-    print_warning_msg("{0} property isn't set in {1} . Setting it to default value - {3}".format(JDBC_DATABASE_NAME_PROPERTY, AMBARI_PROPERTIES_FILE, configDefaults.DEFAULT_DB_NAME))
+    print_warning_msg("{0} property isn't set in {1} . Setting it to default value - {2}".format(JDBC_DATABASE_NAME_PROPERTY, AMBARI_PROPERTIES_FILE, configDefaults.DEFAULT_DB_NAME))
     properties.process_pair(JDBC_DATABASE_NAME_PROPERTY, configDefaults.DEFAULT_DB_NAME)
     conf_file = find_properties_file()
     try:
@@ -908,9 +914,9 @@ def read_passwd_for_alias(alias, masterKey="", options=None):
     with open(tempFilePath, 'w+'):
       os.chmod(tempFilePath, stat.S_IREAD | stat.S_IWRITE)
 
-    if options is not None and options.master_key is not None and options.master_key:
+    if options is not None and hasattr(options, 'master_key') and options.master_key:
       masterKey = options.master_key
-    if masterKey is None or masterKey == "":
+    if not masterKey:
       masterKey = "None"
 
     serverClassPath = ambari_server.serverClassPath.ServerClassPath(get_ambari_properties(), None)
@@ -1017,17 +1023,8 @@ def get_web_server_startup_timeout(properties):
 def get_original_master_key(properties, options = None):
   input = True
   masterKey = None
+  env_master_key = os.environ.get(SECURITY_KEY_ENV_VAR_NAME)
   while(input):
-    try:
-      if options is not None and options.master_key is not None and options.master_key:
-        masterKey = options.master_key
-      if masterKey is None:
-        masterKey = get_validated_string_input('Enter current Master Key: ',
-                                               "", ".*", "", True, False)
-    except KeyboardInterrupt:
-      print_warning_msg('Exiting...')
-      sys.exit(1)
-
     # Find an alias that exists
     alias = None
     property = properties.get_property(JDBC_PASSWORD_PROPERTY)
@@ -1045,11 +1042,30 @@ def get_original_master_key(properties, options = None):
         alias = SSL_TRUSTSTORE_PASSWORD_ALIAS
 
     # Decrypt alias with master to validate it, if no master return
-    if alias and masterKey:
-      password = read_passwd_for_alias(alias, masterKey, options)
-      if not password:
-        print_error_msg ("ERROR: Master key does not match.")
-        continue
+    password = None
+    if alias and env_master_key and env_master_key is not "" and env_master_key != "None":
+      password = read_passwd_for_alias(alias, env_master_key, options)
+    if not password:
+      try:
+        if options is not None and hasattr(options, 'master_key') and options.master_key:
+          masterKey = options.master_key
+        if not masterKey:
+          masterKey = get_validated_string_input('Enter current Master Key: ',
+                                                 "", ".*", "", True, True)
+          if options is not None:
+            options.master_key = masterKey
+      except KeyboardInterrupt:
+        print_warning_msg('Exiting...')
+        sys.exit(1)
+      if alias and masterKey:
+        password = read_passwd_for_alias(alias, masterKey, options)
+        if not password:
+          masterKey = None
+          if options is not None:
+            options.master_key = None
+          print_error_msg ("ERROR: Master key does not match")
+
+          continue
 
     input = False
 

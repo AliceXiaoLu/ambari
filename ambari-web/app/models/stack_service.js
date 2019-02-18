@@ -75,9 +75,24 @@ App.FileSystem = Ember.ObjectProxy.extend({
   content: null,
   services: [],
 
+  //special case for HDFS and OZONE. They can be selected together
+  shouldAllSelectionBeCleared: function () {
+    const dfsNames = this.get('services').mapProperty('serviceName');
+    const coExistingDfs = ['HDFS', 'OZONE'],
+      selectedServices = this.get('services').filterProperty('isSelected');
+    for (let i = 0; i < selectedServices.length; i++) {
+      if (!coExistingDfs.includes(selectedServices[i].get('serviceName'))) {
+        return true;
+      }
+    }
+    return !(dfsNames.includes('HDFS') && dfsNames.includes('OZONE') && coExistingDfs.includes(this.get('content.serviceName')));
+  },
+
   isSelected: function(key, aBoolean) {
     if (arguments.length > 1) {
-      this.clearAllSelection();
+      if (this.shouldAllSelectionBeCleared()) {
+        this.clearAllSelection();
+      }
       this.get('content').set('isSelected', aBoolean);
     }
     return this.get('content.isSelected');
@@ -206,9 +221,8 @@ App.StackService = DS.Model.extend({
   }.property('coSelectedServices', 'serviceName'),
 
   isHiddenOnSelectServicePage: function () {
-    var hiddenServices = ['MAPREDUCE2'];
-    return hiddenServices.contains(this.get('serviceName')) || !this.get('isInstallable') || this.get('doNotShowAndInstall');
-  }.property('serviceName', 'isInstallable'),
+    return !this.get('isInstallable') || this.get('doNotShowAndInstall');
+  }.property('isInstallable', 'doNotShowAndInstall'),
 
   doNotShowAndInstall: function () {
     var skipServices = [];
@@ -269,7 +283,7 @@ App.StackService = DS.Model.extend({
     var configTypes = this.get('configTypes');
     var serviceComponents = this.get('serviceComponents');
     if (configTypes && Object.keys(configTypes).length) {
-      var pattern = ["General", "CapacityScheduler", "FaultTolerance", "Isolation", "Performance", "HIVE_SERVER2", "KDC", "Kadmin","^Advanced", "Env$", "^Custom", "Falcon - Oozie integration", "FalconStartupSite", "FalconRuntimeSite", "MetricCollector", "Settings$", "AdvancedHawqCheck", "LogsearchAdminJson"];
+      var pattern = ["General", "ResourceType", "CapacityScheduler", "ContainerExecutor", "Registry", "FaultTolerance", "Isolation", "Performance", "HIVE_SERVER2", "KDC", "Kadmin","^Advanced", "Env$", "^Custom", "Falcon - Oozie integration", "FalconStartupSite", "FalconRuntimeSite", "MetricCollector", "Settings$", "AdvancedHawqCheck", "LogsearchAdminJson"];
       configCategories = App.StackService.configCategories.call(this).filter(function (_configCategory) {
         var serviceComponentName = _configCategory.get('name');
         var isServiceComponent = serviceComponents.someProperty('componentName', serviceComponentName);
@@ -336,9 +350,7 @@ App.StackService.componentsOrderForService = {
 };
 
 //@TODO: Write unit test for no two keys in the object should have any intersecting elements in their values
-App.StackService.coSelected = {
-  'YARN': ['MAPREDUCE2']
-};
+App.StackService.coSelected = {};
 
 
 App.StackService.reviewPageHandlers = {
@@ -375,9 +387,12 @@ App.StackService.configCategories = function () {
         App.ServiceConfigCategory.create({ name: 'NODEMANAGER', displayName: 'Node Manager', showHost: true}),
         App.ServiceConfigCategory.create({ name: 'APP_TIMELINE_SERVER', displayName: 'Application Timeline Server', showHost: true}),
         App.ServiceConfigCategory.create({ name: 'General', displayName: 'General'}),
+        App.ServiceConfigCategory.create({ name: 'ResourceTypes', displayName: 'Resource Types'}),
         App.ServiceConfigCategory.create({ name: 'FaultTolerance', displayName: 'Fault Tolerance'}),
         App.ServiceConfigCategory.create({ name: 'Isolation', displayName: 'Isolation'}),
-        App.ServiceConfigCategory.create({ name: 'CapacityScheduler', displayName: 'Scheduler', siteFileName: 'capacity-scheduler.xml'})
+        App.ServiceConfigCategory.create({ name: 'CapacityScheduler', displayName: 'Scheduler', siteFileName: 'capacity-scheduler.xml'}),
+        App.ServiceConfigCategory.create({ name: 'ContainerExecutor', displayName: 'Container Executor', siteFileName: 'container-executor.xml'}),
+        App.ServiceConfigCategory.create({ name: 'Registry', displayName: 'Registry'})
       ]);
       break;
     case 'MAPREDUCE2':
@@ -474,8 +489,7 @@ App.StackService.configCategories = function () {
         App.ServiceConfigCategory.create({ name: 'UnixAuthenticationSettings', displayName: 'Unix Authentication Settings'}),
         App.ServiceConfigCategory.create({ name: 'ADSettings', displayName: 'AD Settings'}),
         App.ServiceConfigCategory.create({ name: 'LDAPSettings', displayName: 'LDAP Settings'}),
-        App.ServiceConfigCategory.create({ name: 'KnoxSSOSettings', displayName: 'Knox SSO Settings'}),
-        App.ServiceConfigCategory.create({ name: 'SolrKerberosSettings', displayName: 'Solr Kerberos Settings'})
+        App.ServiceConfigCategory.create({ name: 'KnoxSSOSettings', displayName: 'Knox SSO Settings'})
       ]);
       break;
     case 'ACCUMULO':

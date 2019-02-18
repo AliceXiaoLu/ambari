@@ -20,6 +20,7 @@ limitations under the License.
 import base64
 import os
 import socket
+import ssl
 import urllib2
 from contextlib import closing
 
@@ -133,10 +134,7 @@ def get_ambari_server_api_base(properties):
   if api_port_prop is not None and api_port_prop != '':
     api_port = api_port_prop
 
-  api_ssl = False
-  api_ssl_prop = properties.get_property(SSL_API)
-  if api_ssl_prop is not None:
-    api_ssl = api_ssl_prop.lower() == "true"
+  api_ssl = is_api_ssl_enabled(properties)
 
   if api_ssl:
     api_host = socket.getfqdn()
@@ -203,7 +201,7 @@ def get_json_via_rest_api(properties, admin_login, admin_password, entry_point):
 
   print_info_msg("Fetching information from Ambari's REST API")
 
-  with closing(urllib2.urlopen(request)) as response:
+  with closing(urllib2.urlopen(request, context=get_ssl_context(properties))) as response:
     response_status_code = response.getcode()
     json_data = None
     print_info_msg(
@@ -226,9 +224,106 @@ def perform_changes_via_rest_api(properties, admin_login, admin_password, url_po
     request.add_data(json.dumps(request_data))
   request.get_method = lambda: get_method
 
-  with closing(urllib2.urlopen(request)) as response:
+  with closing(urllib2.urlopen(request, context=get_ssl_context(properties))) as response:
     response_status_code = response.getcode()
     if response_status_code not in (200, 201):
       err = 'Error while performing changes via Ambari REST API. Http status code - ' + str(
         response_status_code)
       raise FatalException(1, err)
+
+
+def get_ssl_context(properties, requested_protocol=None):
+  """
+  If needed, creates an SSL context that does not validate the SSL certificate provided by the server.
+
+  If api.ssl is not True, then return None, else create a new SSL context with either the requested
+  protocol or the best one that is available for the version of Python being used.
+
+  :param properties the Ambari server configuration data
+  :param requested_protocol: the requested SSL/TLS protocol; None to choose the protocol dynamically
+  :rtype ssl.SSLContext
+  :return: a permissive SSLContext or None
+  """
+
+  if not is_api_ssl_enabled(properties) or not hasattr(ssl, 'SSLContext'):
+    return None
+
+  if requested_protocol:
+    protocol = requested_protocol
+  else:
+    if hasattr(ssl, 'PROTOCOL_TLS'):
+      # https://docs.python.org/2/library/ssl.html#ssl.PROTOCOL_TLS
+      # Selects the highest protocol version that both the client and server support.
+      protocol = ssl.PROTOCOL_TLS
+    elif hasattr(ssl, 'PROTOCOL_TLSv1_2'):
+      # https://docs.python.org/2/library/ssl.html#ssl.PROTOCOL_TLSv1_2
+      # Selects TLS version 1.2 as the channel encryption protocol.
+      protocol = ssl.PROTOCOL_TLSv1_2
+    elif hasattr(ssl, 'PROTOCOL_TLSv1_1'):
+      # https://docs.python.org/2/library/ssl.html#ssl.PROTOCOL_TLSv1_1
+      # Selects TLS version 1.1 as the channel encryption protocol
+      protocol = ssl.PROTOCOL_TLSv1_1
+    elif hasattr(ssl, 'PROTOCOL_TLSv1'):
+      # https://docs.python.org/2/library/ssl.html#ssl.PROTOCOL_TLSv1
+      # Selects TLS version 1.0 as the channel encryption protocol
+      protocol = ssl.PROTOCOL_TLSv1
+    else:
+      protocol = None
+
+  if protocol:
+    context = ssl.SSLContext(protocol)
+  else:
+    context = ssl.create_default_context()
+
+  # if _https_verify_certificates is vaild, force this to be False
+  if hasattr(context, '_https_verify_certificates'):
+    context._https_verify_certificates(False)
+
+  return context
+
+
+def is_api_ssl_enabled(properties):
+  """
+  Determines if the Ambari REST API uses SSL or not.
+
+  :param properties: the Ambari server configuration data
+  :return: True, if the Ambari REST API uses SSL; otherwise False
+  """
+  ssl_enabled = False
+  api_ssl_prop = properties.get_property(SSL_API)
+  if api_ssl_prop is not None:
+    ssl_enabled = api_ssl_prop.lower() == "true"
+
+  return ssl_enabled
+
+def eligible(service_info, is_sso_integration):
+  if  is_sso_integration:
+    return service_info['sso_integration_supported'] and (not service_info['sso_integration_requires_kerberos'] or service_info['kerberos_enabled'])
+  else:
+    return service_info['ldap_integration_supported']
+
+def get_eligible_services(properties, admin_login, admin_password, cluster_name, entry_point, service_qualifier):
+  print_info_msg("Fetching %s enabled services" % service_qualifier)
+
+  safe_cluster_name = urllib2.quote(cluster_name)
+
+  response_code, json_data = get_json_via_rest_api(properties, admin_login, admin_password, entry_point % safe_cluster_name)
+
+  services = []
+
+  if json_data and 'items' in json_data:
+    services = [item['ServiceInfo']['service_name'] for item in json_data['items'] if eligible(item['ServiceInfo'], 'SSO' ==  service_qualifier)]
+
+    if len(services) > 0:
+      print_info_msg('Found %s enabled services: %s' % (service_qualifier, ', '.join(services)))
+    else:
+      print_info_msg('No %s enabled services were found' % service_qualifier)
+
+  return services
+
+def get_value_from_dictionary(properties, key, default_value=None):
+  return properties[key] if properties and key in properties else default_value
+
+def get_boolean_from_dictionary(properties, key, default_value=False):
+  value = get_value_from_dictionary(properties, key, None)
+  return 'true' == value.lower() if value else default_value

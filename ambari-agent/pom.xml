@@ -19,13 +19,12 @@
   <parent>
     <groupId>org.apache.ambari</groupId>
     <artifactId>ambari-project</artifactId>
-    <version>2.0.0.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <relativePath>../ambari-project</relativePath>
   </parent>
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.apache.ambari</groupId>
   <artifactId>ambari-agent</artifactId>
-  <version>2.0.0.0-SNAPSHOT</version>
   <name>Ambari Agent</name>
   <description>Ambari Agent</description>
   <properties>
@@ -43,6 +42,8 @@
     <simplejson.install.dir>/usr/lib/ambari-agent/lib/ambari_simplejson</simplejson.install.dir>
     <stomp.install.dir>/usr/lib/ambari-agent/lib/ambari_stomp</stomp.install.dir>
     <ws4py.install.dir>/usr/lib/ambari-agent/lib/ambari_ws4py</ws4py.install.dir>
+    <pbkdf2.install.dir>/usr/lib/ambari-agent/lib/ambari_pbkdf2</pbkdf2.install.dir>
+    <pyaes.install.dir>/usr/lib/ambari-agent/lib/ambari_pyaes</pyaes.install.dir>
     <lib.dir>/usr/lib/ambari-agent/lib</lib.dir>
     <deb.architecture>amd64</deb.architecture>
     <ambari.server.module>../ambari-server</ambari.server.module>
@@ -89,6 +90,7 @@
     <dependency>
       <groupId>com.google.guava</groupId>
       <artifactId>guava</artifactId>
+      <version>18.0</version>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
@@ -145,7 +147,7 @@
       <groupId>org.apache.ambari</groupId>
       <artifactId>ambari-utility</artifactId>
       <scope>test</scope>
-      <version>1.0.0.0-SNAPSHOT</version>
+      <version>${revision}</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
@@ -214,7 +216,7 @@
               <environmentVariables>
                 <PYTHONPATH>${path.python.1}${pathsep}$PYTHONPATH</PYTHONPATH>
               </environmentVariables>
-              <skip>${skipTests}</skip>
+              <skip>${skipPythonTests}</skip>
             </configuration>
             <id>python-test</id>
             <phase>test</phase>
@@ -296,6 +298,10 @@
             <scriptFile>src/main/package/rpm/posttrans_agent.sh</scriptFile>
             <fileEncoding>utf-8</fileEncoding>
           </posttransScriptlet>
+          <postremoveScriptlet>
+            <scriptFile>src/main/package/rpm/postremove.sh</scriptFile>
+            <fileEncoding>utf-8</fileEncoding>
+          </postremoveScriptlet>
 
           <needarch>x86_64</needarch>
           <autoRequires>false</autoRequires>
@@ -695,7 +701,7 @@
       <executable.shell>sh</executable.shell>
       <fileextension.shell>sh</fileextension.shell>
       <fileextension.dot.shell-default></fileextension.dot.shell-default>
-      <path.python.1>${project.basedir}/../ambari-common/src/main/python:${project.basedir}/../ambari-agent/src/main/python:${project.basedir}/../ambari-common/src/main/python/ambari_jinja2:${project.basedir}/../ambari-common/src/main/python/ambari_commons:${project.basedir}/../ambari-common/src/test/python:${project.basedir}/src/main/python:${project.basedir}/src/main/python/ambari_agent:${project.basedir}/src/main/python/resource_management:${project.basedir}/src/test/python:${project.basedir}/src/test/python/ambari_agent:${project.basedir}/src/test/python/resource_management:${project.basedir}/../ambari-server/src/test/python:${project.basedir}/../ambari-server/src/main/resources/common-services/HDFS/2.1.0.2.0/package/files</path.python.1>
+      <path.python.1>${project.basedir}/../ambari-common/src/main/python:${project.basedir}/../ambari-agent/src/main/python:${project.basedir}/../ambari-common/src/main/python/ambari_jinja2:${project.basedir}/../ambari-agent/src/main/python:${project.basedir}/../ambari-common/src/main/python/ambari_commons:${project.basedir}/../ambari-common/src/test/python:${project.basedir}/src/main/python:${project.basedir}/src/main/python/ambari_agent:${project.basedir}/src/main/python/resource_management:${project.basedir}/src/test/python:${project.basedir}/src/test/python/ambari_agent:${project.basedir}/src/test/python/resource_management:${project.basedir}/../ambari-server/src/test/python:${project.basedir}/../ambari-server/src/main/resources/common-services/HDFS/2.1.0.2.0/package/files</path.python.1>
      </properties>
     </profile>
     <profile>

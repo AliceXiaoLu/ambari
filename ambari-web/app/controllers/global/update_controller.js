@@ -67,14 +67,14 @@ App.UpdateController = Em.Controller.extend({
              "host_components/metrics/hbase/master/MasterStartTime," +
              "host_components/metrics/hbase/master/MasterActiveTime," +
              "host_components/metrics/hbase/master/AverageLoad," +
-             "host_components/metrics/master/AssignmentManger/ritCount",
+             "host_components/metrics/master/AssignmentManager/ritCount",
     'STORM': 'metrics/api/v1/cluster/summary,metrics/api/v1/topology/summary,metrics/api/v1/nimbus/summary',
     'HDFS': 'host_components/metrics/dfs/namenode/ClusterId'
   },
 
   nameNodeMetricsModelProperties: [
-    'jvm_memory_heap_max_values', 'jvm_memory_heap_used_values', 'capacity_used_values', 'capacity_total_values',
-    'capacity_remaining_values', 'capacity_non_dfs_used_values', 'name_node_rpc_values', 'name_node_start_time_values'
+    'jvm_memory_heap_max_values', 'jvm_memory_heap_used_values', 'capacity_used', 'capacity_total',
+    'capacity_remaining', 'capacity_non_dfs_used', 'name_node_rpc_values', 'name_node_start_time_values'
   ],
 
   /**
@@ -685,10 +685,11 @@ App.UpdateController = Em.Controller.extend({
   },
 
   configsChangedHandler: function(event) {
-    if (event.configs && event.configs.someProperty('type', 'cluster-env')) {
-      this.updateClusterEnv();
-    }
-    App.router.get('configurationController').updateConfigTags();
+    App.router.get('configurationController').updateConfigTags().always(() => {
+      if (event.configs && event.configs.someProperty('type', 'cluster-env')) {
+        this.updateClusterEnv();
+      }
+    });
   },
 
   //TODO - update service auto-start to use this

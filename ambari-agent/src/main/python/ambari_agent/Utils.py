@@ -21,6 +21,7 @@ import os
 import time
 import threading
 import collections
+import traceback
 from functools import wraps
 from ambari_agent.ExitHelper import ExitHelper
 
@@ -161,12 +162,17 @@ class Utils(object):
     t = threading.Timer( graceful_stop_timeout, ExitHelper().exit, [AGENT_AUTO_RESTART_EXIT_CODE])
     t.start()
 
+  @staticmethod
+  def get_traceback_as_text(ex):
+    return ''.join(traceback.format_exception(etype=type(ex), value=ex, tb=ex.__traceback__))
+
 class ImmutableDictionary(dict):
   def __init__(self, dictionary):
     """
     Recursively turn dict to ImmutableDictionary
     """
-    for k, v in dictionary.iteritems():
+    if not isinstance(dictionary, ImmutableDictionary):
+      for k, v in dictionary.iteritems():
         dictionary[k] = Utils.make_immutable(v)
 
     super(ImmutableDictionary, self).__init__(dictionary)
@@ -215,6 +221,17 @@ def lazy_property(undecorated):
       return v
 
   return decorated
+
+def synchronized(lock):
+    def wrap(f):
+        def newFunction(*args, **kw):
+            lock.acquire()
+            try:
+                return f(*args, **kw)
+            finally:
+                lock.release()
+        return newFunction
+    return wrap
 
 def execute_with_retries(tries, try_sleep, retry_exception_class, func, *args, **kwargs):
   for i in range(tries):

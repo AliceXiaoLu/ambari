@@ -17,6 +17,7 @@
  */
 package org.apache.ambari.server.controller.internal;
 
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -28,6 +29,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.ClusterNotFoundException;
@@ -68,7 +70,6 @@ import org.apache.ambari.server.serveraction.kerberos.KerberosMissingAdminCreden
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.MaintenanceState;
-import org.apache.ambari.server.state.RepositoryType;
 import org.apache.ambari.server.state.Service;
 import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentHost;
@@ -76,6 +77,10 @@ import org.apache.ambari.server.state.ServiceInfo;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.State;
 import org.apache.ambari.server.topology.STOMPComponentsDeleteHandler;
+import org.apache.ambari.server.topology.addservice.AddServiceOrchestrator;
+import org.apache.ambari.server.topology.addservice.AddServiceRequest;
+import org.apache.ambari.server.utils.LoggingPreconditions;
+import org.apache.ambari.spi.RepositoryType;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
@@ -92,6 +97,7 @@ import com.google.inject.assistedinject.AssistedInject;
 public class ServiceResourceProvider extends AbstractControllerResourceProvider {
 
   private static final Logger LOG = LoggerFactory.getLogger(ServiceResourceProvider.class);
+  private static final LoggingPreconditions CHECK = new LoggingPreconditions(LOG);
 
   public static final String SERVICE_CLUSTER_NAME_PROPERTY_ID = PropertyHelper.getPropertyId(
       "ServiceInfo", "cluster_name");
@@ -129,6 +135,23 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
   private static final String SSO_INTEGRATION_DESIRED_PROPERTY_ID = PropertyHelper.getPropertyId(
     "ServiceInfo", "sso_integration_desired");
 
+  private static final String SSO_INTEGRATION_REQUIRES_KERBEROS_PROPERTY_ID = PropertyHelper.getPropertyId(
+      "ServiceInfo", "sso_integration_requires_kerberos");
+
+  private static final String KERBEROS_ENABLED_PROPERTY_ID = PropertyHelper.getPropertyId(
+      "ServiceInfo", "kerberos_enabled");
+
+  private static final String LDAP_INTEGRATION_SUPPORTED_PROPERTY_ID = PropertyHelper.getPropertyId(
+      "ServiceInfo", "ldap_integration_supported");
+
+  private static final String LDAP_INTEGRATION_ENABLED_PROPERTY_ID = PropertyHelper.getPropertyId(
+      "ServiceInfo", "ldap_integration_enabled");
+
+  private static final String LDAP_INTEGRATION_DESIRED_PROPERTY_ID = PropertyHelper.getPropertyId(
+      "ServiceInfo", "ldap_integration_desired");
+
+  public static final String OPERATION_TYPE = "operation_type";
+
   protected static final String SERVICE_REPOSITORY_STATE = "ServiceInfo/repository_state";
 
   //Parameters from the predicate
@@ -136,7 +159,7 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
   private static final String QUERY_PARAMETERS_RECONFIGURE_CLIENT = "params/reconfigure_client";
   private static final String QUERY_PARAMETERS_START_DEPENDENCIES = "params/start_dependencies";
 
-  private static Set<String> pkPropertyIds =
+  private static final Set<String> pkPropertyIds =
     new HashSet<>(Arrays.asList(new String[]{
       SERVICE_CLUSTER_NAME_PROPERTY_ID,
       SERVICE_SERVICE_NAME_PROPERTY_ID}));
@@ -171,6 +194,16 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
     PROPERTY_IDS.add(SSO_INTEGRATION_SUPPORTED_PROPERTY_ID);
     PROPERTY_IDS.add(SSO_INTEGRATION_ENABLED_PROPERTY_ID);
     PROPERTY_IDS.add(SSO_INTEGRATION_DESIRED_PROPERTY_ID);
+    PROPERTY_IDS.add(SSO_INTEGRATION_REQUIRES_KERBEROS_PROPERTY_ID);
+    PROPERTY_IDS.add(KERBEROS_ENABLED_PROPERTY_ID);
+
+    PROPERTY_IDS.add(LDAP_INTEGRATION_SUPPORTED_PROPERTY_ID);
+    PROPERTY_IDS.add(LDAP_INTEGRATION_ENABLED_PROPERTY_ID);
+    PROPERTY_IDS.add(LDAP_INTEGRATION_DESIRED_PROPERTY_ID);
+
+    PROPERTY_IDS.add(OPERATION_TYPE);
+    PROPERTY_IDS.add(ClusterResourceProvider.SECURITY);
+    PROPERTY_IDS.add(ClusterResourceProvider.CREDENTIALS);
 
     // keys
     KEY_PROPERTY_IDS.put(Resource.Type.Service, SERVICE_SERVICE_NAME_PROPERTY_ID);
@@ -187,6 +220,9 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
 
   @Inject
   private STOMPComponentsDeleteHandler STOMPComponentsDeleteHandler;
+
+  @Inject
+  private AddServiceOrchestrator addServiceOrchestrator;
 
   /**
    * Used to lookup the repository when creating services.
@@ -222,6 +258,15 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
              UnsupportedPropertyException,
              ResourceAlreadyExistsException,
              NoSuchParentResourceException {
+
+    if (request.getProperties().size() == 1) {
+      Map<String, Object> requestProperties = request.getProperties().iterator().next();
+      if (isAddServiceRequest(requestProperties)) {
+        RequestStatusResponse response = processAddServiceRequest(requestProperties, request.getRequestInfoProperties());
+        notifyCreate(Resource.Type.Service, request);
+        return getRequestStatus(response);
+      }
+    }
 
     final Set<ServiceRequest> requests = new HashSet<>();
     for (Map<String, Object> propertyMap : request.getProperties()) {
@@ -294,6 +339,15 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
         response.isSsoIntegrationEnabled(), requestedIds);
       setResourceProperty(resource, SSO_INTEGRATION_DESIRED_PROPERTY_ID,
         response.isSsoIntegrationDesired(), requestedIds);
+      setResourceProperty(resource, SSO_INTEGRATION_REQUIRES_KERBEROS_PROPERTY_ID,
+        response.isSsoIntegrationRequiresKerberos(), requestedIds);
+      setResourceProperty(resource, KERBEROS_ENABLED_PROPERTY_ID,
+          response.isKerberosEnabled(), requestedIds);
+
+      setResourceProperty(resource, LDAP_INTEGRATION_SUPPORTED_PROPERTY_ID, response.isLdapIntegrationSupported(), requestedIds);
+      setResourceProperty(resource, LDAP_INTEGRATION_ENABLED_PROPERTY_ID, response.isLdapIntegrationEnabled(), requestedIds);
+      setResourceProperty(resource, LDAP_INTEGRATION_DESIRED_PROPERTY_ID, response.isLdapIntegrationDesired(), requestedIds);
+      
 
       Map<String, Object> serviceSpecificProperties = getServiceSpecificProperties(
           response.getClusterName(), response.getServiceName(), requestedIds);
@@ -363,6 +417,7 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
         }
       }
     }
+    unsupportedProperties.removeAll(AddServiceRequest.TOP_LEVEL_PROPERTIES);
     return unsupportedProperties;
   }
 
@@ -937,24 +992,20 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
         // Run through the list of service component hosts. If all host components are in removable state,
         // the service can be deleted, irrespective of it's state.
         //
-        boolean isServiceRemovable = true;
+        List<ServiceComponentHost> nonRemovableComponents =  service.getServiceComponents().values().stream()
+          .flatMap(sch -> sch.getServiceComponentHosts().values().stream())
+          .filter(sch -> !sch.canBeRemoved())
+          .collect(Collectors.toList());
 
-        for (ServiceComponent sc : service.getServiceComponents().values()) {
-          Map<String, ServiceComponentHost> schHostMap = sc.getServiceComponentHosts();
+        if (!nonRemovableComponents.isEmpty()) {
+          for (ServiceComponentHost sch: nonRemovableComponents){
+            String msg = String.format("Cannot remove %s/%s. %s on %s is in %s state.",
+              serviceRequest.getClusterName(), serviceRequest.getServiceName(), sch.getServiceComponentName(),
+              sch.getHost(), String.valueOf(sch.getState()));
 
-          for (Map.Entry<String, ServiceComponentHost> entry : schHostMap.entrySet()) {
-            ServiceComponentHost sch = entry.getValue();
-            if (!sch.canBeRemoved()) {
-              String msg = "Cannot remove " + serviceRequest.getClusterName() + "/" + serviceRequest.getServiceName() +
-                      ". " + sch.getServiceComponentName() + "on " + sch.getHost() + " is in " +
-                      String.valueOf(sch.getDesiredState()) + " state.";
-              LOG.error(msg);
-              isServiceRemovable = false;
-            }
+            LOG.error(msg);
           }
-        }
 
-        if (!isServiceRemovable) {
           throw new AmbariException ("Cannot remove " +
                   serviceRequest.getClusterName() + "/" + serviceRequest.getServiceName() +
                     ". " + "One or more host components are in a non-removable state.");
@@ -1181,4 +1232,27 @@ public class ServiceResourceProvider extends AbstractControllerResourceProvider 
     }
 
   }
+
+  private static boolean isAddServiceRequest(Map<String, Object> properties) {
+    return AddServiceRequest.OperationType.ADD_SERVICE.name().equals(properties.get(OPERATION_TYPE));
+  }
+
+  private RequestStatusResponse processAddServiceRequest(Map<String, Object> requestProperties, Map<String, String> requestInfoProperties) throws NoSuchParentResourceException {
+    AddServiceRequest request = createAddServiceRequest(requestInfoProperties);
+    String clusterName = String.valueOf(requestProperties.get(SERVICE_CLUSTER_NAME_PROPERTY_ID));
+    try {
+      return addServiceOrchestrator.processAddServiceRequest(getManagementController().getClusters().getCluster(clusterName), request);
+    } catch (AmbariException e) {
+      throw new NoSuchParentResourceException(e.getMessage(), e);
+    }
+  }
+
+  private static AddServiceRequest createAddServiceRequest(Map<String, String> requestInfoProperties) {
+    try {
+      return AddServiceRequest.of(requestInfoProperties.get(Request.REQUEST_INFO_BODY_PROPERTY));
+    } catch (UncheckedIOException e) {
+      return CHECK.wrapInUnchecked(e, IllegalArgumentException::new, "Could not parse input as valid Add Service request: " + e.getCause().getMessage());
+    }
+  }
+
 }

@@ -29,6 +29,7 @@ from threading import Thread
 import copy
 import signal
 
+from ambari_agent.models.commands import CommandStatus, AgentCommand
 from mock.mock import patch, MagicMock, call
 from ambari_agent.CustomServiceOrchestrator import CustomServiceOrchestrator
 from ambari_agent.PythonExecutor import PythonExecutor
@@ -365,10 +366,10 @@ class TestActionQueue(TestCase):
     
     actionQueue = ActionQueue(initializer_module)
     execution_command = {
-      'commandType' : ActionQueue.EXECUTION_COMMAND,
+      'commandType' : AgentCommand.execution,
     }
     status_command = {
-      'commandType' : ActionQueue.STATUS_COMMAND,
+      'commandType' : AgentCommand.status,
     }
     wrong_command = {
       'commandType' : "SOME_WRONG_COMMAND",
@@ -507,8 +508,8 @@ class TestActionQueue(TestCase):
     initializer_module = InitializerModule()
     initializer_module.init()
     initializer_module.config = config
-    initializer_module.recovery_manager = RecoveryManager(tempfile.mktemp())
-    initializer_module.recovery_manager.update_config(5, 5, 1, 11, True, False, False, "")
+    initializer_module.recovery_manager = RecoveryManager(MagicMock())
+    initializer_module.recovery_manager.update_config(5, 5, 1, 11, True, False, False)
 
     with patch("__builtin__.open") as open_mock:
       # Make file read calls visible
@@ -579,7 +580,7 @@ class TestActionQueue(TestCase):
     config.set('agent', 'prefix', tempdir)
     config.set('agent', 'cache_dir', "/var/lib/ambari-agent/cache")
     config.set('agent', 'tolerate_download_failures', "true")
-    
+    config.set('heartbeat', 'log_symbols_count', "900000")
     initializer_module = InitializerModule()
     initializer_module.init()
     initializer_module.config = config
@@ -661,7 +662,7 @@ class TestActionQueue(TestCase):
       self.assertEqual(reports[0], expected)
   
       # now should not have reports (read complete/failed reports are deleted)
-      actionQueue.commandStatuses.clear_reported_reports()
+      actionQueue.commandStatuses.clear_reported_reports({CLUSTER_ID: reports})
       reports = actionQueue.commandStatuses.generate_report()[CLUSTER_ID]
       self.assertEqual(len(reports), 0)
   
@@ -680,7 +681,7 @@ class TestActionQueue(TestCase):
                       reports[0]['status'] == 'IN_PROGRESS':
         time.sleep(0.1)
         reports = actionQueue.commandStatuses.generate_report()[CLUSTER_ID]
-        actionQueue.commandStatuses.clear_reported_reports()
+        actionQueue.commandStatuses.clear_reported_reports({CLUSTER_ID: reports})
         
         # check report
       expected = {'status': 'FAILED',
@@ -698,7 +699,7 @@ class TestActionQueue(TestCase):
       self.assertEqual(reports[0], expected)
   
       # now should not have reports (read complete/failed reports are deleted)
-      actionQueue.commandStatuses.clear_reported_reports()
+      actionQueue.commandStatuses.clear_reported_reports({CLUSTER_ID: reports})
       reports = actionQueue.commandStatuses.generate_report()[CLUSTER_ID]
       self.assertEqual(len(reports), 0)
   
@@ -715,7 +716,7 @@ class TestActionQueue(TestCase):
                       reports[0]['status'] == 'IN_PROGRESS':
         time.sleep(0.1)
         reports = actionQueue.commandStatuses.generate_report()[CLUSTER_ID]
-        actionQueue.commandStatuses.clear_reported_reports()
+        actionQueue.commandStatuses.clear_reported_reports({CLUSTER_ID: reports})
       # check report
       expected = {'status': 'COMPLETED',
                   'stderr': 'stderr',
@@ -732,7 +733,7 @@ class TestActionQueue(TestCase):
       self.assertEqual(reports[0], expected)
   
       # now should not have reports (read complete/failed reports are deleted)
-      actionQueue.commandStatuses.clear_reported_reports()
+      actionQueue.commandStatuses.clear_reported_reports({CLUSTER_ID: reports})
       reports = actionQueue.commandStatuses.generate_report()[CLUSTER_ID]
       self.assertEqual(len(reports), 0)
 
@@ -951,7 +952,7 @@ class TestActionQueue(TestCase):
                                 get_mock, process_command_mock, gpeo_mock):
     CustomServiceOrchestrator_mock.return_value = None
     dummy_controller = MagicMock()
-    dummy_controller.recovery_manager = RecoveryManager(tempfile.mktemp())
+    dummy_controller.recovery_manager = RecoveryManager(MagicMock())
     config = MagicMock()
     gpeo_mock.return_value = 0
     config.get_parallel_exec_option = gpeo_mock
@@ -1078,14 +1079,14 @@ class TestActionQueue(TestCase):
 
     execute_command = copy.deepcopy(self.background_command)
     actionQueue.put([execute_command])
-    actionQueue.processBackgroundQueueSafeEmpty();
+    actionQueue.process_background_queue_safe_empty()
     # actionQueue.controller.statusCommandExecutor.process_results();
     
     # assert that python execturor start
     self.assertTrue(runCommand_mock.called)
     runningCommand = actionQueue.commandStatuses.current_state.get(execute_command['taskId'])
     self.assertTrue(runningCommand is not None)
-    self.assertEqual(runningCommand[1]['status'], ActionQueue.IN_PROGRESS_STATUS)
+    self.assertEqual(runningCommand[1]['status'], CommandStatus.in_progress)
     
     reports = actionQueue.commandStatuses.generate_report()[CLUSTER_ID]
     self.assertEqual(len(reports), 1)
@@ -1130,7 +1131,7 @@ class TestActionQueue(TestCase):
     actionQueue.on_background_command_complete_callback = wraped(actionQueue.on_background_command_complete_callback,
                                                                  None, command_complete_w)
     actionQueue.put([self.background_command])
-    actionQueue.processBackgroundQueueSafeEmpty();
+    actionQueue.process_background_queue_safe_empty();
     
     with lock:
       complete_done.wait(0.1)

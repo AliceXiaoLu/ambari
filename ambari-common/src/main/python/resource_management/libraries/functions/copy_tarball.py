@@ -209,6 +209,11 @@ TARBALL_MAP = {
               "/{0}/apps/{1}/slider/slider.tar.gz".format(STACK_NAME_PATTERN, STACK_VERSION_PATTERN)),
     "service": "SLIDER"
   },
+  "yarn": {
+    "dirs": ("{0}/{1}/hadoop-yarn/lib/service-dep.tar.gz".format(STACK_ROOT_PATTERN, STACK_VERSION_PATTERN),
+             "/{0}/apps/{1}/yarn/service-dep.tar.gz".format(STACK_NAME_PATTERN, STACK_VERSION_PATTERN)),
+    "service": "YARN"
+  },
 
   "tez": {
     "dirs": ("{0}/{1}/tez/lib/tez.tar.gz".format(STACK_ROOT_PATTERN, STACK_VERSION_PATTERN),
@@ -264,11 +269,19 @@ TARBALL_MAP = {
     "dirs": ("/tmp/spark2/spark2-{0}-yarn-archive.tar.gz".format(STACK_NAME_PATTERN),
              "/{0}/apps/{1}/spark2/spark2-{0}-yarn-archive.tar.gz".format(STACK_NAME_PATTERN, STACK_VERSION_PATTERN)),
     "service": "SPARK2"
+  },
+
+  "spark2hive": {
+    "dirs":  ("/tmp/spark2/spark2-{0}-hive-archive.tar.gz".format(STACK_NAME_PATTERN),
+              "/{0}/apps/{1}/spark2/spark2-{0}-hive-archive.tar.gz".format(STACK_NAME_PATTERN, STACK_VERSION_PATTERN)),
+
+    "service": "SPARK2"
   }
 }
 
 SERVICE_TO_CONFIG_MAP = {
   "slider": "slider-env",
+  "yarn": "yarn-env",
   "tez": "tez-env",
   "pig": "pig-env",
   "sqoop": "sqoop-env",
@@ -277,7 +290,8 @@ SERVICE_TO_CONFIG_MAP = {
   "hadoop_streaming": "mapred-env",
   "tez_hive2": "hive-env",
   "spark": "spark-env",
-  "spark2": "spark2-env"
+  "spark2": "spark2-env",
+  "spark2hive": "spark2-env"
 }
 
 def get_sysprep_skip_copy_tarballs_hdfs():

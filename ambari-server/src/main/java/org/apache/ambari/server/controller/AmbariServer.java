@@ -110,6 +110,7 @@ import org.apache.ambari.server.security.authorization.Users;
 import org.apache.ambari.server.security.unsecured.rest.CertificateDownload;
 import org.apache.ambari.server.security.unsecured.rest.CertificateSign;
 import org.apache.ambari.server.security.unsecured.rest.ConnectionInfo;
+import org.apache.ambari.server.serveraction.kerberos.stageutils.KerberosKeytabController;
 import org.apache.ambari.server.stack.UpdateActiveRepoVersionOnStartup;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.topology.AmbariContext;
@@ -470,13 +471,16 @@ public class AmbariServer {
 
       enableLog4jMonitor(configsMap);
 
-      GzipHandler gzipHandler = new GzipHandler();
-      gzipHandler.setHandler(root);
-
-      //TODO minimal set, perhaps is needed to add some other mime types
-      gzipHandler.setIncludedMimeTypes("text/html", "text/plain", "text/xml", "text/css", "application/javascript",
+      if (configs.isGzipHandlerEnabledForJetty()) {
+        GzipHandler gzipHandler = new GzipHandler();
+        gzipHandler.setHandler(root);
+        //TODO minimal set, perhaps is needed to add some other mime types
+        gzipHandler.setIncludedMimeTypes("text/html", "text/plain", "text/xml", "text/css", "application/javascript",
           "application/x-javascript", "application/xml", "application/x-www-form-urlencoded", "application/json");
-      handlerList.addHandler(gzipHandler);
+        handlerList.addHandler(gzipHandler);
+      } else {
+        handlerList.addHandler(root);
+      }
 
       server.setHandler(handlerList);
 
@@ -910,7 +914,7 @@ public class AmbariServer {
     KeyService.init(injector.getInstance(PersistKeyValueImpl.class));
     BootStrapResource.init(injector.getInstance(BootStrapImpl.class));
     StackAdvisorResourceProvider.init(injector.getInstance(StackAdvisorHelper.class),
-        injector.getInstance(Configuration.class));
+        injector.getInstance(Configuration.class), injector.getInstance(Clusters.class), injector.getInstance(AmbariMetaInfo.class));
     StageUtils.setGson(injector.getInstance(Gson.class));
     StageUtils.setTopologyManager(injector.getInstance(TopologyManager.class));
     StageUtils.setConfiguration(injector.getInstance(Configuration.class));
@@ -939,6 +943,7 @@ public class AmbariServer {
     ClusterPrivilegeResourceProvider.init(injector.getInstance(ClusterDAO.class));
     AmbariPrivilegeResourceProvider.init(injector.getInstance(ClusterDAO.class));
     ActionManager.setTopologyManager(injector.getInstance(TopologyManager.class));
+    KerberosKeytabController.setKerberosHelper(injector.getInstance(KerberosHelper.class));
     StackAdvisorBlueprintProcessor.init(injector.getInstance(StackAdvisorHelper.class));
     ThreadPoolEnabledPropertyProvider.init(injector.getInstance(Configuration.class));
 

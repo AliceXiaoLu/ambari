@@ -32,7 +32,9 @@ import static org.apache.ambari.server.agent.DummyHeartbeatConstants.HDFS_CLIENT
 import static org.apache.ambari.server.agent.DummyHeartbeatConstants.NAMENODE;
 import static org.apache.ambari.server.agent.DummyHeartbeatConstants.SECONDARY_NAMENODE;
 import static org.apache.ambari.server.controller.KerberosHelperImpl.SET_KEYTAB;
+import static org.easymock.EasyMock.anyObject;
 import static org.easymock.EasyMock.createMock;
+import static org.easymock.EasyMock.eq;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.reset;
@@ -84,6 +86,7 @@ import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
 import org.apache.ambari.server.orm.OrmTestHelper;
 import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
+import org.apache.ambari.server.security.encryption.Encryptor;
 import org.apache.ambari.server.serveraction.kerberos.KerberosIdentityDataFileWriter;
 import org.apache.ambari.server.serveraction.kerberos.KerberosServerAction;
 import org.apache.ambari.server.serveraction.kerberos.stageutils.KerberosKeytabController;
@@ -102,6 +105,7 @@ import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.State;
 import org.apache.ambari.server.state.fsm.InvalidStateTransitionException;
+import org.apache.ambari.server.state.kerberos.KerberosIdentityDescriptor;
 import org.apache.ambari.server.state.svccomphost.ServiceComponentHostInstallEvent;
 import org.apache.ambari.server.utils.StageUtils;
 import org.apache.commons.codec.binary.Base64;
@@ -117,6 +121,8 @@ import org.junit.rules.TemporaryFolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.google.inject.Guice;
 import com.google.inject.Inject;
@@ -198,7 +204,6 @@ public class TestHeartbeatHandler {
     Collection<Host> hosts = cluster.getHosts();
     assertEquals(hosts.size(), 1);
 
-    Clusters fsm = clusters;
     Host hostObject = hosts.iterator().next();
     hostObject.setIPv4("ipv4");
     hostObject.setIPv6("ipv6");
@@ -206,7 +211,7 @@ public class TestHeartbeatHandler {
 
     String hostname = hostObject.getHostName();
 
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am, injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     Register reg = new Register();
     HostInfo hi = new HostInfo();
     hi.setHostName(hostname);
@@ -356,9 +361,7 @@ public class TestHeartbeatHandler {
       InvalidStateTransitionException {
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-        injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     clusters.addHost(DummyHostname1);
     Host hostObject = clusters.getHost(DummyHostname1);
     hostObject.setIPv4("ipv4");
@@ -380,6 +383,10 @@ public class TestHeartbeatHandler {
     assertTrue(hostObject.getLastRegistrationTime() != 0);
     assertEquals(hostObject.getLastHeartbeatTime(),
         hostObject.getLastRegistrationTime());
+  }
+
+  private HeartBeatHandler createHeartBeatHandler() {
+    return new HeartBeatHandler(clusters, actionManagerTestHelper.getMockActionManager(), Encryptor.NONE, injector);
   }
 
   @Test
@@ -404,9 +411,7 @@ public class TestHeartbeatHandler {
     // timestamp invalidation (RecoveryConfigHelper.handleServiceComponentInstalledEvent())
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-        injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     handler.start();
 
     Host hostObject = clusters.getHost(DummyHostname1);
@@ -424,11 +429,6 @@ public class TestHeartbeatHandler {
     reg.setPrefix(Configuration.PREFIX_DIR);
     RegistrationResponse rr = handler.handleRegistration(reg);
     RecoveryConfig rc = rr.getRecoveryConfig();
-    assertEquals(rc.getMaxCount(), "4");
-    assertEquals(rc.getType(), "AUTO_START");
-    assertEquals(rc.getMaxLifetimeCount(), "10");
-    assertEquals(rc.getRetryGap(), "2");
-    assertEquals(rc.getWindowInMinutes(), "23");
     assertEquals(rc.getEnabledComponents(), "DATANODE,NAMENODE");
 
     // Send a heart beat with the recovery timestamp set to the
@@ -457,9 +457,7 @@ public class TestHeartbeatHandler {
       throws Exception, InvalidStateTransitionException {
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-            injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     Cluster cluster = heartbeatTestHelper.getDummyCluster();
     Service hdfs = addService(cluster, HDFS);
 
@@ -498,11 +496,6 @@ public class TestHeartbeatHandler {
     reg.setPrefix(Configuration.PREFIX_DIR);
     RegistrationResponse rr = handler.handleRegistration(reg);
     RecoveryConfig rc = rr.getRecoveryConfig();
-    assertEquals(rc.getMaxCount(), "4");
-    assertEquals(rc.getType(), "AUTO_START");
-    assertEquals(rc.getMaxLifetimeCount(), "10");
-    assertEquals(rc.getRetryGap(), "2");
-    assertEquals(rc.getWindowInMinutes(), "23");
     assertEquals(rc.getEnabledComponents(), "DATANODE,NAMENODE"); // HDFS_CLIENT is in maintenance mode
   }
 
@@ -513,9 +506,7 @@ public class TestHeartbeatHandler {
       InvalidStateTransitionException {
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-                                                    injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     clusters.addHost(DummyHostname1);
     Host hostObject = clusters.getHost(DummyHostname1);
     hostObject.setIPv4("ipv4");
@@ -546,9 +537,7 @@ public class TestHeartbeatHandler {
 
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-        injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     clusters.addHost(DummyHostname1);
     Host hostObject = clusters.getHost(DummyHostname1);
     hostObject.setIPv4("ipv4");
@@ -587,9 +576,7 @@ public class TestHeartbeatHandler {
   public void testRegistrationPublicHostname() throws Exception, InvalidStateTransitionException {
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-        injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     clusters.addHost(DummyHostname1);
     Host hostObject = clusters.getHost(DummyHostname1);
     hostObject.setIPv4("ipv4");
@@ -620,9 +607,7 @@ public class TestHeartbeatHandler {
       InvalidStateTransitionException {
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-        injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     clusters.addHost(DummyHostname1);
     Host hostObject = clusters.getHost(DummyHostname1);
     hostObject.setIPv4("ipv4");
@@ -649,9 +634,7 @@ public class TestHeartbeatHandler {
 
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-            injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     clusters.addHost(DummyHostname1);
     Host hostObject = clusters.getHost(DummyHostname1);
     hostObject.setIPv4("ipv4");
@@ -683,8 +666,7 @@ public class TestHeartbeatHandler {
     hostObject.setIPv4("ipv4");
     hostObject.setIPv6("ipv6");
 
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-        injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     Register reg = new Register();
     HostInfo hi = new HostInfo();
     hi.setHostName(DummyHostname1);
@@ -770,9 +752,7 @@ public class TestHeartbeatHandler {
 
     ActionManager am = actionManagerTestHelper.getMockActionManager();
     replay(am);
-    Clusters fsm = clusters;
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am,
-        injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     handler.setHeartbeatMonitor(hm);
     clusters.addHost(DummyHostname1);
     Host hostObject = clusters.getHost(DummyHostname1);
@@ -974,8 +954,6 @@ public class TestHeartbeatHandler {
 
   @Test
   public void testRecoveryStatusReports() throws Exception {
-    Clusters fsm = clusters;
-
     Cluster cluster = heartbeatTestHelper.getDummyCluster();
     Host hostObject = clusters.getHost(DummyHostname1);
     Service hdfs = addService(cluster, HDFS);
@@ -994,7 +972,7 @@ public class TestHeartbeatHandler {
           add(command);
         }}).anyTimes();
     replay(am);
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am, injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
 
     Register reg = new Register();
     HostInfo hi = new HostInfo();
@@ -1075,7 +1053,7 @@ public class TestHeartbeatHandler {
               add(command);
             }}).anyTimes();
     replay(am);
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am, injector);
+    HeartBeatHandler handler = createHeartBeatHandler();
     HeartbeatProcessor heartbeatProcessor = handler.getHeartbeatProcessor();
 
     Register reg = new Register();
@@ -1311,17 +1289,14 @@ public class TestHeartbeatHandler {
 
   }
 
-  @Test
-  public void testComponents() throws Exception,
-      InvalidStateTransitionException {
+  @Test @Ignore
+  public void testComponents() throws Exception {
 
     ComponentsResponse expected = new ComponentsResponse();
     StackId dummyStackId = new StackId(DummyStackId);
     Map<String, Map<String, String>> dummyComponents = new HashMap<>();
 
     Map<String, String> dummyCategoryMap = new HashMap<>();
-
-    dummyCategoryMap = new HashMap<>();
     dummyCategoryMap.put("NAMENODE", "MASTER");
     dummyComponents.put("HDFS", dummyCategoryMap);
 
@@ -1425,6 +1400,12 @@ public class TestHeartbeatHandler {
     List<Map<String, String>> kcp;
     Map<String, String> properties;
 
+    Cluster cluster = heartbeatTestHelper.getDummyCluster();
+    Service hdfs = addService(cluster, HDFS);
+    hdfs.addServiceComponent(DATANODE);
+    hdfs.addServiceComponent(NAMENODE);
+    hdfs.addServiceComponent(SECONDARY_NAMENODE);
+
     kcp = testInjectKeytabSetKeytab("c6403.ambari.apache.org");
     Assert.assertNotNull(kcp);
     Assert.assertEquals(1, kcp.size());
@@ -1461,6 +1442,12 @@ public class TestHeartbeatHandler {
 
   @Test
   public void testInjectKeytabNotApplicableHost() throws Exception {
+    Cluster cluster = heartbeatTestHelper.getDummyCluster();
+    Service hdfs = addService(cluster, HDFS);
+    hdfs.addServiceComponent(DATANODE);
+    hdfs.addServiceComponent(NAMENODE);
+    hdfs.addServiceComponent(SECONDARY_NAMENODE);
+
     List<Map<String, String>> kcp;
     kcp = testInjectKeytabSetKeytab("c6401.ambari.apache.org");
     Assert.assertNotNull(kcp);
@@ -1482,6 +1469,7 @@ public class TestHeartbeatHandler {
     Map<String, String> commandparams = new HashMap<>();
     commandparams.put(KerberosServerAction.AUTHENTICATED_USER_NAME, "admin");
     executionCommand.setCommandParams(commandparams);
+    executionCommand.setClusterName(DummyCluster);
 
     final HostRoleCommand command = hostRoleCommandFactory.create(DummyHostname1,
         Role.DATANODE, null, null);
@@ -1496,7 +1484,7 @@ public class TestHeartbeatHandler {
     Method injectKeytabMethod = agentCommandsPublisher.getClass().getDeclaredMethod("injectKeytab",
         ExecutionCommand.class, String.class, String.class);
     injectKeytabMethod.setAccessible(true);
-    commandparams.put(KerberosServerAction.DATA_DIRECTORY, createTestKeytabData(agentCommandsPublisher).getAbsolutePath());
+    commandparams.put(KerberosServerAction.DATA_DIRECTORY, createTestKeytabData(agentCommandsPublisher, false).getAbsolutePath());
     injectKeytabMethod.invoke(agentCommandsPublisher, executionCommand, "SET_KEYTAB", targetHost);
 
     return executionCommand.getKerberosCommandParams();
@@ -1514,6 +1502,7 @@ public class TestHeartbeatHandler {
     Map<String, String> commandparams = new HashMap<>();
     commandparams.put(KerberosServerAction.AUTHENTICATED_USER_NAME, "admin");
     executionCommand.setCommandParams(commandparams);
+    executionCommand.setClusterName(DummyCluster);
 
     final HostRoleCommand command = hostRoleCommandFactory.create(DummyHostname1,
         Role.DATANODE, null, null);
@@ -1528,16 +1517,41 @@ public class TestHeartbeatHandler {
     Method injectKeytabMethod = agentCommandsPublisher.getClass().getDeclaredMethod("injectKeytab",
         ExecutionCommand.class, String.class, String.class);
     injectKeytabMethod.setAccessible(true);
-    commandparams.put(KerberosServerAction.DATA_DIRECTORY, createTestKeytabData(agentCommandsPublisher).getAbsolutePath());
+    commandparams.put(KerberosServerAction.DATA_DIRECTORY, createTestKeytabData(agentCommandsPublisher, true).getAbsolutePath());
     injectKeytabMethod.invoke(agentCommandsPublisher, executionCommand, "REMOVE_KEYTAB", targetHost);
 
     return executionCommand.getKerberosCommandParams();
   }
 
 
-  private File createTestKeytabData(AgentCommandsPublisher agentCommandsPublisher) throws Exception {
+  private File createTestKeytabData(AgentCommandsPublisher agentCommandsPublisher, boolean removeKeytabs) throws Exception {
     KerberosKeytabController kerberosKeytabControllerMock = createMock(KerberosKeytabController.class);
-    expect(kerberosKeytabControllerMock.getFilteredKeytabs(null,null,null)).andReturn(
+    Map<String, Collection<String>> filter;
+
+    if(removeKeytabs) {
+      filter = null;
+
+      Multimap<String, String> serviceMapping = ArrayListMultimap.create();
+      serviceMapping.put("HDFS", "DATANODE");
+
+      ResolvedKerberosPrincipal resolvedKerberosPrincipal = createMock(ResolvedKerberosPrincipal.class);
+      expect(resolvedKerberosPrincipal.getHostName()).andReturn("c6403.ambari.apache.org");
+      expect(resolvedKerberosPrincipal.getPrincipal()).andReturn("dn/_HOST@_REALM");
+      expect(resolvedKerberosPrincipal.getServiceMapping()).andReturn(serviceMapping);
+      replay(resolvedKerberosPrincipal);
+
+      ResolvedKerberosKeytab resolvedKerberosKeytab = createMock(ResolvedKerberosKeytab.class);
+      expect(resolvedKerberosKeytab.getPrincipals()).andReturn(Collections.singleton(resolvedKerberosPrincipal));
+      replay(resolvedKerberosKeytab);
+
+      expect(kerberosKeytabControllerMock.getKeytabByFile("/etc/security/keytabs/dn.service.keytab")).andReturn(resolvedKerberosKeytab).once();
+    }
+    else {
+      filter = Collections.singletonMap("HDFS", Collections.singletonList("*"));
+    }
+
+    expect(kerberosKeytabControllerMock.adjustServiceComponentFilter(anyObject(), eq(false), anyObject())).andReturn(filter).once();
+    expect(kerberosKeytabControllerMock.getFilteredKeytabs((Collection<KerberosIdentityDescriptor>) EasyMock.anyObject(), EasyMock.eq(null), EasyMock.eq(null))).andReturn(
       Sets.newHashSet(
         new ResolvedKerberosKeytab(
           "/etc/security/keytabs/dn.service.keytab",
@@ -1561,6 +1575,8 @@ public class TestHeartbeatHandler {
         )
       )
     ).once();
+
+    expect(kerberosKeytabControllerMock.getServiceIdentities(EasyMock.anyString(), EasyMock.anyObject())).andReturn(Collections.emptySet()).anyTimes();
 
     replay(kerberosKeytabControllerMock);
 

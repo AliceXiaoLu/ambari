@@ -19,7 +19,6 @@ limitations under the License.
 '''
 
 import logging
-import ambari_stomp
 import threading
 from socket import error as socket_error
 
@@ -27,7 +26,7 @@ from ambari_agent import Constants
 from ambari_agent.Register import Register
 from ambari_agent.Utils import BlockingDictionary
 from ambari_agent.Utils import Utils
-from ambari_agent.listeners.ServerResponsesListener import ServerResponsesListener
+from ambari_agent.ComponentVersionReporter import ComponentVersionReporter
 from ambari_agent.listeners.TopologyEventListener import TopologyEventListener
 from ambari_agent.listeners.ConfigurationEventListener import ConfigurationEventListener
 from ambari_agent.listeners.AgentActionsListener import AgentActionsListener
@@ -35,6 +34,7 @@ from ambari_agent.listeners.MetadataEventListener import MetadataEventListener
 from ambari_agent.listeners.CommandsEventListener import CommandsEventListener
 from ambari_agent.listeners.HostLevelParamsEventListener import HostLevelParamsEventListener
 from ambari_agent.listeners.AlertDefinitionsEventListener import AlertDefinitionsEventListener
+from ambari_agent.listeners.EncryptionKeyListener import EncryptionKeyListener
 from ambari_agent import security
 from ambari_stomp.adapter.websocket import ConnectionIsAlreadyClosed
 
@@ -59,14 +59,16 @@ class HeartbeatThread(threading.Thread):
 
     # listeners
     self.server_responses_listener = initializer_module.server_responses_listener
-    self.commands_events_listener = CommandsEventListener(initializer_module.action_queue)
-    self.metadata_events_listener = MetadataEventListener(initializer_module.metadata_cache, initializer_module.config)
-    self.topology_events_listener = TopologyEventListener(initializer_module.topology_cache)
-    self.configuration_events_listener = ConfigurationEventListener(initializer_module.configurations_cache)
-    self.host_level_params_events_listener = HostLevelParamsEventListener(initializer_module.host_level_params_cache, initializer_module.recovery_manager)
-    self.alert_definitions_events_listener = AlertDefinitionsEventListener(initializer_module.alert_definitions_cache, initializer_module.alert_scheduler_handler)
+    self.commands_events_listener = CommandsEventListener(initializer_module)
+    self.metadata_events_listener = MetadataEventListener(initializer_module)
+    self.topology_events_listener = TopologyEventListener(initializer_module)
+    self.configuration_events_listener = ConfigurationEventListener(initializer_module)
+    self.encryption_key_events_listener = EncryptionKeyListener(initializer_module)
+    self.host_level_params_events_listener = HostLevelParamsEventListener(initializer_module)
+    self.alert_definitions_events_listener = AlertDefinitionsEventListener(initializer_module)
     self.agent_actions_events_listener = AgentActionsListener(initializer_module)
-    self.listeners = [self.server_responses_listener, self.commands_events_listener, self.metadata_events_listener, self.topology_events_listener, self.configuration_events_listener, self.host_level_params_events_listener, self.alert_definitions_events_listener, self.agent_actions_events_listener]
+    self.component_status_executor = initializer_module.component_status_executor
+    self.listeners = [self.server_responses_listener, self.commands_events_listener, self.metadata_events_listener, self.topology_events_listener, self.configuration_events_listener, self.host_level_params_events_listener, self.alert_definitions_events_listener, self.agent_actions_events_listener, self.encryption_key_events_listener]
 
     self.post_registration_requests = [
     (Constants.TOPOLOGY_REQUEST_ENDPOINT, initializer_module.topology_cache, self.topology_events_listener, Constants.TOPOLOGIES_TOPIC),
@@ -133,26 +135,42 @@ class HeartbeatThread(threading.Thread):
     self.handle_registration_response(response)
 
     for endpoint, cache, listener, subscribe_to in self.post_registration_requests:
-      # should not hang forever on these requests
-      response = self.blocking_request({'hash': cache.hash}, endpoint, log_handler=listener.get_log_message)
       try:
-        listener.on_event({}, response)
-      except:
-        logger.exception("Exception while handing response to request at {0}. {1}".format(endpoint, response))
-        raise
+        listener.enabled = False
+        self.subscribe_to_topics([subscribe_to])
+        response = self.blocking_request({'hash': cache.hash}, endpoint, log_handler=listener.get_log_message)
 
-      self.subscribe_to_topics([subscribe_to])
+        try:
+          listener.on_event({}, response)
+        except:
+          logger.exception("Exception while handing response to request at {0} {1}".format(endpoint, response))
+          raise
+      finally:
+        with listener.event_queue_lock:
+          listener.enabled = True
+          # Process queued messages if any
+          listener.dequeue_unprocessed_events()
 
     self.subscribe_to_topics(Constants.POST_REGISTRATION_TOPICS_TO_SUBSCRIBE)
 
     self.run_post_registration_actions()
+
     self.initializer_module.is_registered = True
     # now when registration is done we can expose connection to other threads.
     self.initializer_module._connection = self.connection
 
+    self.report_components_initial_versions()
+    self.force_component_status_update()
+
   def run_post_registration_actions(self):
     for post_registration_action in self.post_registration_actions:
       post_registration_action()
+
+  def report_components_initial_versions(self):
+    ComponentVersionReporter(self.initializer_module).start()
+
+  def force_component_status_update(self):
+    self.component_status_executor.force_send_component_statuses()
 
   def unregister(self):
     """

@@ -67,6 +67,7 @@ import org.apache.ambari.server.security.authorization.Users;
 import org.apache.ambari.server.security.encryption.CredentialStoreService;
 import org.apache.ambari.server.security.encryption.CredentialStoreServiceImpl;
 import org.apache.ambari.server.stack.StackManagerFactory;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeContextFactory;
 import org.apache.ambari.server.stageplanner.RoleGraphFactory;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
@@ -74,7 +75,6 @@ import org.apache.ambari.server.state.ConfigFactory;
 import org.apache.ambari.server.state.ServiceComponentFactory;
 import org.apache.ambari.server.state.ServiceComponentHostFactory;
 import org.apache.ambari.server.state.ServiceFactory;
-import org.apache.ambari.server.state.UpgradeContextFactory;
 import org.apache.ambari.server.state.configgroup.ConfigGroupFactory;
 import org.apache.ambari.server.state.scheduler.RequestExecutionFactory;
 import org.apache.ambari.server.state.stack.OsFamily;
@@ -147,6 +147,11 @@ public class ActiveWidgetLayoutResourceProviderTest extends EasyMockSupport {
   @Test
   public void testUpdateResources_NonAdministrator_Self() throws Exception {
     updateResourcesTest(TestAuthenticationFactory.createClusterAdministrator("User1", 2L), "User1");
+  }
+
+  @Test
+  public void testUpdateResources_NoUserName_Self() throws Exception {
+    updateResourcesTest(TestAuthenticationFactory.createClusterAdministrator("User1", 2L), "User1", false);
   }
 
   @Test(expected = AuthorizationException.class)
@@ -255,6 +260,10 @@ public class ActiveWidgetLayoutResourceProviderTest extends EasyMockSupport {
   }
 
   private void updateResourcesTest(Authentication authentication, String requestedUsername) throws Exception {
+    updateResourcesTest(authentication, requestedUsername, true);
+  }
+
+  private void updateResourcesTest(Authentication authentication, String requestedUsername, boolean setUserName) throws Exception {
     Injector injector = createInjector();
 
     Capture<? extends String> widgetLayoutJsonCapture = newCapture();
@@ -293,7 +302,9 @@ public class ActiveWidgetLayoutResourceProviderTest extends EasyMockSupport {
 
     HashMap<String, Object> requestProps = new HashMap<>();
     requestProps.put(ActiveWidgetLayoutResourceProvider.WIDGETLAYOUT, widgetLayouts);
-    requestProps.put(ActiveWidgetLayoutResourceProvider.WIDGETLAYOUT_USERNAME_PROPERTY_ID, requestedUsername);
+    if (setUserName) {
+      requestProps.put(ActiveWidgetLayoutResourceProvider.WIDGETLAYOUT_USERNAME_PROPERTY_ID, requestedUsername);
+    }
 
     Request request = PropertyHelper.getUpdateRequest(requestProps, null);
 

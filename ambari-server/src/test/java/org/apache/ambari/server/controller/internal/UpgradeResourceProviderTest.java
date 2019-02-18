@@ -17,6 +17,7 @@
  */
 package org.apache.ambari.server.controller.internal;
 
+import static org.easymock.EasyMock.eq;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.replay;
 import static org.junit.Assert.assertEquals;
@@ -56,7 +57,10 @@ import org.apache.ambari.server.audit.AuditLogger;
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.controller.AmbariManagementController;
 import org.apache.ambari.server.controller.AmbariServer;
+import org.apache.ambari.server.controller.KerberosHelper;
+import org.apache.ambari.server.controller.KerberosHelperImpl;
 import org.apache.ambari.server.controller.ResourceProviderFactory;
+import org.apache.ambari.server.controller.UpdateConfigurationPolicy;
 import org.apache.ambari.server.controller.spi.Predicate;
 import org.apache.ambari.server.controller.spi.Request;
 import org.apache.ambari.server.controller.spi.RequestStatus;
@@ -92,6 +96,11 @@ import org.apache.ambari.server.orm.entities.UpgradeItemEntity;
 import org.apache.ambari.server.security.TestAuthenticationFactory;
 import org.apache.ambari.server.serveraction.upgrades.AutoSkipFailedSummaryAction;
 import org.apache.ambari.server.serveraction.upgrades.ConfigureAction;
+import org.apache.ambari.server.stack.upgrade.ConfigureTask;
+import org.apache.ambari.server.stack.upgrade.Direction;
+import org.apache.ambari.server.stack.upgrade.RegenerateKeytabsTask;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeContext;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeHelper;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
@@ -99,23 +108,21 @@ import org.apache.ambari.server.state.ConfigFactory;
 import org.apache.ambari.server.state.ConfigHelper;
 import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.HostState;
-import org.apache.ambari.server.state.RepositoryType;
+import org.apache.ambari.server.state.SecurityType;
 import org.apache.ambari.server.state.Service;
 import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.StackId;
-import org.apache.ambari.server.state.UpgradeContext;
-import org.apache.ambari.server.state.UpgradeHelper;
 import org.apache.ambari.server.state.UpgradeState;
-import org.apache.ambari.server.state.stack.upgrade.ConfigureTask;
-import org.apache.ambari.server.state.stack.upgrade.Direction;
-import org.apache.ambari.server.state.stack.upgrade.UpgradeType;
 import org.apache.ambari.server.topology.TopologyManager;
 import org.apache.ambari.server.utils.StageUtils;
 import org.apache.ambari.server.view.ViewRegistry;
+import org.apache.ambari.spi.RepositoryType;
+import org.apache.ambari.spi.upgrade.UpgradeType;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.easymock.Capture;
 import org.easymock.EasyMock;
 import org.easymock.EasyMockSupport;
 import org.junit.After;
@@ -147,6 +154,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
   private RepositoryVersionDAO repoVersionDao = null;
   private Injector injector;
   private Clusters clusters;
+  private Cluster cluster;
   private AmbariManagementController amc;
   private ConfigHelper configHelper;
   private AgentConfigsHolder agentConfigsHolder = createNiceMock(AgentConfigsHolder.class);
@@ -154,6 +162,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
   private TopologyManager topologyManager;
   private ConfigFactory configFactory;
   private HostRoleCommandDAO hrcDAO;
+  private KerberosHelper kerberosHelperMock = createNiceMock(KerberosHelper.class);
 
   RepositoryVersionEntity repoVersionEntity2110;
   RepositoryVersionEntity repoVersionEntity2111;
@@ -182,7 +191,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     expect(
         configHelper.getDefaultProperties(EasyMock.anyObject(StackId.class),
             EasyMock.anyString())).andReturn(
-      new HashMap<>()).anyTimes();
+        new HashMap<>()).anyTimes();
 
     expect(
         configHelper.getChangedConfigTypes(EasyMock.anyObject(Cluster.class), EasyMock.anyObject(ServiceConfigEntity.class),
@@ -256,7 +265,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     clusters = injector.getInstance(Clusters.class);
 
     clusters.addCluster("c1", stack211);
-    Cluster cluster = clusters.getCluster("c1");
+    cluster = clusters.getCluster("c1");
 
     clusters.addHost("h1");
     Host host = clusters.getHost("h1");
@@ -316,10 +325,11 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
 
   /**
    * Obtain request id from the {@code RequestStatus}
+   *
    * @param requestStatus reqult of the {@code createResources}
    * @return id of the request
    */
-  private long getRequestId(RequestStatus requestStatus){
+  private long getRequestId(RequestStatus requestStatus) {
     assertEquals(1, requestStatus.getAssociatedResources().size());
     Resource r = requestStatus.getAssociatedResources().iterator().next();
     String id = r.getPropertyValue("Upgrade/request_id").toString();
@@ -501,9 +511,9 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     propertyIds.add("Upgrade");
 
     Predicate predicate = new PredicateBuilder()
-      .property(UpgradeResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
-      .property(UpgradeResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
-      .toPredicate();
+        .property(UpgradeResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
+        .property(UpgradeResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
+        .toPredicate();
     Request request = PropertyHelper.getReadRequest(propertyIds);
 
     ResourceProvider upgradeResourceProvider = createProvider(amc);
@@ -523,9 +533,9 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     propertyIds.add("UpgradeGroup");
 
     predicate = new PredicateBuilder()
-      .property(UpgradeGroupResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
-      .property(UpgradeGroupResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
-      .toPredicate();
+        .property(UpgradeGroupResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
+        .property(UpgradeGroupResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
+        .toPredicate();
     request = PropertyHelper.getReadRequest(propertyIds);
 
     ResourceProvider upgradeGroupResourceProvider = new UpgradeGroupResourceProvider(amc);
@@ -544,10 +554,10 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     propertyIds.add("UpgradeItem");
 
     predicate = new PredicateBuilder()
-      .property(UpgradeItemResourceProvider.UPGRADE_GROUP_ID).equals("1").and()
-      .property(UpgradeItemResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
-      .property(UpgradeItemResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
-      .toPredicate();
+        .property(UpgradeItemResourceProvider.UPGRADE_GROUP_ID).equals("1").and()
+        .property(UpgradeItemResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
+        .property(UpgradeItemResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
+        .toPredicate();
     request = PropertyHelper.getReadRequest(propertyIds);
 
     ResourceProvider upgradeItemResourceProvider = new UpgradeItemResourceProvider(amc);
@@ -563,10 +573,10 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     propertyIds.add("UpgradeItem");
 
     predicate = new PredicateBuilder()
-      .property(UpgradeItemResourceProvider.UPGRADE_GROUP_ID).equals("3").and()
-      .property(UpgradeItemResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
-      .property(UpgradeItemResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
-      .toPredicate();
+        .property(UpgradeItemResourceProvider.UPGRADE_GROUP_ID).equals("3").and()
+        .property(UpgradeItemResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
+        .property(UpgradeItemResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
+        .toPredicate();
     request = PropertyHelper.getReadRequest(propertyIds);
 
     upgradeItemResourceProvider = new UpgradeItemResourceProvider(amc);
@@ -616,9 +626,9 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     propertyIds.add("Upgrade");
 
     Predicate predicate = new PredicateBuilder()
-      .property(UpgradeResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
-      .property(UpgradeResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
-      .toPredicate();
+        .property(UpgradeResourceProvider.UPGRADE_REQUEST_ID).equals("1").and()
+        .property(UpgradeResourceProvider.UPGRADE_CLUSTER_NAME).equals("c1")
+        .toPredicate();
 
     request = PropertyHelper.getReadRequest(propertyIds);
     Set<Resource> resources = upgradeResourceProvider.getResources(request, predicate);
@@ -661,6 +671,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     upgradeEntity.setDirection(Direction.UPGRADE);
     upgradeEntity.setRepositoryVersion(repoVersionEntity2200);
     upgradeEntity.setUpgradePackage("upgrade_test");
+    upgradeEntity.setUpgradePackStackId(repoVersionEntity2200.getStackId());
     upgradeEntity.setUpgradeType(UpgradeType.ROLLING);
     upgradeEntity.setRequestEntity(requestEntity);
 
@@ -806,7 +817,6 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
   }
 
 
-
   /**
    * Test Downgrade from the partially completed upgrade
    */
@@ -845,10 +855,10 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     boolean isZKGroupFound = false;
 
     // look only for testing groups
-    for (UpgradeGroupEntity group: groups) {
+    for (UpgradeGroupEntity group : groups) {
       if (group.getName().equalsIgnoreCase("hive")) {
         isHiveGroupFound = true;
-      } else if (group.getName().equalsIgnoreCase("zookeeper")){
+      } else if (group.getName().equalsIgnoreCase("zookeeper")) {
         isZKGroupFound = true;
       }
     }
@@ -877,10 +887,10 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     RequestStatus status = upgradeResourceProvider.createResources(request);
     UpgradeEntity upgradeEntity = upgradeDao.findUpgradeByRequestId(getRequestId(status));
 
-    for (UpgradeGroupEntity group: upgradeEntity.getUpgradeGroups()) {
+    for (UpgradeGroupEntity group : upgradeEntity.getUpgradeGroups()) {
       if (group.getName().equalsIgnoreCase("hive")) {
         isHiveGroupFound = true;
-      } else if (group.getName().equalsIgnoreCase("zookeeper")){
+      } else if (group.getName().equalsIgnoreCase("zookeeper")) {
         isZKGroupFound = true;
       }
     }
@@ -892,7 +902,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
 
 
   @Test
-  public void testAbort() throws Exception {
+  public void testAbortUpgrade() throws Exception {
     RequestStatus status = testCreateResources();
 
     Set<Resource> createdResources = status.getAssociatedResources();
@@ -948,7 +958,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
 
 
   @Test
-  public void testRetry() throws Exception {
+  public void testResumeUpgrade() throws Exception {
     RequestStatus status = testCreateResources();
 
     Set<Resource> createdResources = status.getAssociatedResources();
@@ -982,15 +992,46 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
         foundOne = true;
       }
     }
+
     assertTrue("Expected at least one server-side action", foundOne);
 
-    HostRoleCommand cmd = commands.get(commands.size()-1);
+    // make sure we have enough commands to properly test this
+    assertTrue(commands.size() > 5);
 
+    // now, set some status of the commands to reflect an actual aborted upgrade
+    // (some completed, some faiures, some timeouts)
     HostRoleCommandDAO dao = injector.getInstance(HostRoleCommandDAO.class);
-    HostRoleCommandEntity entity = dao.findByPK(cmd.getTaskId());
-    entity.setStatus(HostRoleStatus.ABORTED);
-    dao.merge(entity);
+    for (int i = 0; i < commands.size(); i++) {
+      HostRoleCommand command = commands.get(i);
+      HostRoleCommandEntity entity = dao.findByPK(command.getTaskId());
 
+      // make sure to interweave failures/timeouts with completed
+      final HostRoleStatus newStatus;
+      switch (i) {
+        case 0:
+        case 1:
+          newStatus = HostRoleStatus.COMPLETED;
+          break;
+        case 2:
+          newStatus = HostRoleStatus.TIMEDOUT;
+          break;
+        case 3:
+          newStatus = HostRoleStatus.COMPLETED;
+          break;
+        case 4:
+          newStatus = HostRoleStatus.FAILED;
+          break;
+        default:
+          newStatus = HostRoleStatus.ABORTED;
+          break;
+      }
+
+      entity.setStatus(newStatus);
+      dao.merge(entity);
+    }
+
+
+    // resume the upgrade
     requestProps = new HashMap<>();
     requestProps.put(UpgradeResourceProvider.UPGRADE_REQUEST_ID, id.toString());
     requestProps.put(UpgradeResourceProvider.UPGRADE_REQUEST_STATUS, "PENDING");
@@ -1000,6 +1041,18 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     // !!! make sure we can.  actual reset is tested elsewhere
     req = PropertyHelper.getUpdateRequest(requestProps, null);
     urp.updateResources(req, null);
+
+    // test that prior completions (both timedout and failure) did not go back
+    // to PENDING
+    commands = am.getRequestTasks(id);
+    for (int i = 0; i < commands.size(); i++) {
+      HostRoleCommand command = commands.get(i);
+      if (i < 5) {
+        assertTrue(command.getStatus() != HostRoleStatus.PENDING);
+      } else {
+        assertTrue(command.getStatus() == HostRoleStatus.PENDING);
+      }
+    }
   }
 
   @Test(expected = IllegalArgumentException.class)
@@ -1090,7 +1143,6 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     group = upgrade.getUpgradeGroups().get(0);
     assertEquals("Execution items increased from 1 to 2", 2, group.getItems().size());
   }
-
 
 
   @Test
@@ -1242,11 +1294,11 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     List<StageEntity> stageEntities = stageDAO.findByRequestId(entity.getRequestId());
     Gson gson = new Gson();
     for (StageEntity se : stageEntities) {
-      Map<String, String> map = gson.<Map<String, String>> fromJson(se.getCommandParamsStage(),Map.class);
+      Map<String, String> map = gson.<Map<String, String>>fromJson(se.getCommandParamsStage(), Map.class);
       assertTrue(map.containsKey("upgrade_direction"));
       assertEquals("upgrade", map.get("upgrade_direction"));
 
-      if(map.containsKey("upgrade_type")){
+      if (map.containsKey("upgrade_type")) {
         assertEquals("rolling_upgrade", map.get("upgrade_type"));
       }
     }
@@ -1301,6 +1353,47 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
       }
     }
     return status;
+  }
+
+  @Test
+  public void testUpdateSkipSCFailures() throws Exception {
+    Cluster cluster = clusters.getCluster("c1");
+
+    Map<String, Object> requestProps = new HashMap<>();
+    requestProps.put(UpgradeResourceProvider.UPGRADE_CLUSTER_NAME, "c1");
+    requestProps.put(UpgradeResourceProvider.UPGRADE_REPO_VERSION_ID, String.valueOf(repoVersionEntity2200.getId()));
+    requestProps.put(UpgradeResourceProvider.UPGRADE_PACK, "upgrade_test");
+    requestProps.put(UpgradeResourceProvider.UPGRADE_TYPE, UpgradeType.ROLLING.toString());
+    requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_FAILURES, Boolean.FALSE.toString());
+    requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_SC_FAILURES, Boolean.TRUE.toString());
+    requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_MANUAL_VERIFICATION, Boolean.FALSE.toString());
+    requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_PREREQUISITE_CHECKS, Boolean.TRUE.toString());
+    requestProps.put(UpgradeResourceProvider.UPGRADE_DIRECTION, Direction.UPGRADE.name());
+
+    ResourceProvider upgradeResourceProvider = createProvider(amc);
+    Request request = PropertyHelper.getCreateRequest(Collections.singleton(requestProps), null);
+    upgradeResourceProvider.createResources(request);
+
+    List<UpgradeEntity> upgrades = upgradeDao.findUpgrades(1);
+    assertEquals(1, upgrades.size());
+
+    UpgradeEntity entity = upgrades.get(0);
+
+    HostRoleCommandDAO dao = injector.getInstance(HostRoleCommandDAO.class);
+
+    List<HostRoleCommandEntity> tasks = dao.findByRequest(entity.getRequestId());
+    for (HostRoleCommandEntity task : tasks) {
+      if (task.getRoleCommand() == RoleCommand.SERVICE_CHECK) {
+        StageEntity stage = task.getStage();
+        if (stage.isSkippable() && stage.isAutoSkipOnFailureSupported()) {
+          assertTrue(task.isFailureAutoSkipped());
+        } else {
+          assertFalse(task.isFailureAutoSkipped());
+        }
+      } else {
+        assertFalse(task.isFailureAutoSkipped());
+      }
+    }
   }
 
   @Test
@@ -1451,7 +1544,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     try {
       upgradeResourceProvider.createResources(request);
       Assert.fail("The request should have failed due to the missing Upgrade/host_order property");
-    } catch( SystemException systemException ){
+    } catch (SystemException systemException) {
       // expected
     }
 
@@ -1589,7 +1682,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     requestProps.put(UpgradeResourceProvider.UPGRADE_REPO_VERSION_ID, String.valueOf(repoVersionEntity2200.getId()));
     requestProps.put(UpgradeResourceProvider.UPGRADE_PACK, "upgrade_test_host_ordered");
     requestProps.put(UpgradeResourceProvider.UPGRADE_TYPE, UpgradeType.HOST_ORDERED.toString());
-    requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_PREREQUISITE_CHECKS,Boolean.TRUE.toString());
+    requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_PREREQUISITE_CHECKS, Boolean.TRUE.toString());
     requestProps.put(UpgradeResourceProvider.UPGRADE_DIRECTION, Direction.UPGRADE.name());
     requestProps.put(UpgradeResourceProvider.UPGRADE_HOST_ORDERED_HOSTS, hostsOrder);
 
@@ -1636,8 +1729,8 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     List<UpgradeHistoryEntity> histories = upgrade.getHistory();
     assertEquals(2, histories.size());
 
-    for( UpgradeHistoryEntity history : histories){
-      assertEquals( "ZOOKEEPER", history.getServiceName() );
+    for (UpgradeHistoryEntity history : histories) {
+      assertEquals("ZOOKEEPER", history.getServiceName());
       assertEquals(repoVersionEntity2110, history.getFromReposistoryVersion());
       assertEquals(repoVersionEntity2200, history.getTargetRepositoryVersion());
     }
@@ -1740,7 +1833,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
       @Override
       public String apply(UpgradeHistoryEntity input) {
         return input.getServiceName() + "/" + input.getComponentName();
-      };
+      }
     };
 
     for (UpgradeEntity upgrade : upgrades) {
@@ -1784,7 +1877,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
 
     Map<String, Object> requestProps = new HashMap<>();
     requestProps.put(UpgradeResourceProvider.UPGRADE_CLUSTER_NAME, "c1");
-    requestProps.put(UpgradeResourceProvider.UPGRADE_REPO_VERSION_ID,String.valueOf(repoVersionEntity2112.getId()));
+    requestProps.put(UpgradeResourceProvider.UPGRADE_REPO_VERSION_ID, String.valueOf(repoVersionEntity2112.getId()));
     requestProps.put(UpgradeResourceProvider.UPGRADE_PACK, "upgrade_test");
     requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_PREREQUISITE_CHECKS, "true");
     requestProps.put(UpgradeResourceProvider.UPGRADE_DIRECTION, Direction.UPGRADE.name());
@@ -1894,7 +1987,6 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
     assertTrue(foundConfigTask);
 
 
-
     // !!! test that a regular upgrade will pick up the config change
     cluster.setUpgradeEntity(null);
     repoVersionEntity2112.setType(RepositoryType.STANDARD);
@@ -1927,8 +2019,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
   }
 
 
-
-  private String parseSingleMessage(String msgStr){
+  private String parseSingleMessage(String msgStr) {
     JsonParser parser = new JsonParser();
     JsonArray msgArray = (JsonArray) parser.parse(msgStr);
     JsonObject msg = (JsonObject) msgArray.get(0);
@@ -2020,7 +2111,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
       if (command.getRole().equals(Role.ZOOKEEPER_SERVER) && command.getRoleCommand().equals(RoleCommand.CUSTOM_COMMAND)) {
         Map<String, String> commandParams = wrapper.getExecutionCommand().getCommandParams();
         assertTrue(commandParams.containsKey(KeyNames.COMMAND_TIMEOUT));
-        assertEquals("824",commandParams.get(KeyNames.COMMAND_TIMEOUT));
+        assertEquals("824", commandParams.get(KeyNames.COMMAND_TIMEOUT));
         found = true;
       }
     }
@@ -2030,7 +2121,7 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
   }
 
   /**
-   * Tests that commands created for {@link org.apache.ambari.server.state.stack.upgrade.StageWrapper.Type#UPGRADE_TASKS} set the
+   * Tests that commands created for {@link org.apache.ambari.server.stack.upgrade.orchestrate.StageWrapper.Type#UPGRADE_TASKS} set the
    * service and component on the {@link ExecutionCommand}.
    * <p/>
    * Without this, commands of this type would not be able to determine which
@@ -2081,16 +2172,63 @@ public class UpgradeResourceProviderTest extends EasyMockSupport {
   }
 
   /**
+   * Tests that a {@link RegenerateKeytabsTask} causes the upgrade to inject the
+   * correct stages.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testCreateRegenerateKeytabStages() throws Exception {
+    Capture<Map<String, String>> requestPropertyMapCapture = EasyMock.newCapture();
+
+    Map<String, Object> requestProps = new HashMap<>();
+    requestProps.put(UpgradeResourceProvider.UPGRADE_CLUSTER_NAME, "c1");
+    requestProps.put(UpgradeResourceProvider.UPGRADE_REPO_VERSION_ID, String.valueOf(repoVersionEntity2200.getId()));
+    requestProps.put(UpgradeResourceProvider.UPGRADE_PACK, "upgrade_test_regenerate_keytabs");
+    requestProps.put(UpgradeResourceProvider.UPGRADE_SKIP_PREREQUISITE_CHECKS, "true");
+    requestProps.put(UpgradeResourceProvider.UPGRADE_DIRECTION, Direction.UPGRADE.name());
+
+    cluster.setSecurityType(SecurityType.KERBEROS);
+
+    RequestStageContainer requestStageContainer = createNiceMock(RequestStageContainer.class);
+    expect(requestStageContainer.getStages()).andReturn(Lists.newArrayList()).once();
+
+    expect(kerberosHelperMock.executeCustomOperations(eq(cluster), EasyMock.capture(requestPropertyMapCapture),
+        EasyMock.anyObject(RequestStageContainer.class), eq(null))).andReturn(
+        requestStageContainer).once();
+
+    replayAll();
+
+    ResourceProvider upgradeResourceProvider = createProvider(amc);
+    Request request = PropertyHelper.getCreateRequest(Collections.singleton(requestProps), null);
+
+    try {
+      upgradeResourceProvider.createResources(request);
+      Assert.fail("The mock request stage container should have caused a problem in JPA");
+    } catch (IllegalArgumentException illegalArgumentException) {
+      // ignore
+    }
+
+    verifyAll();
+
+    Map<String, String> requestPropertyMap = requestPropertyMapCapture.getValue();
+    assertEquals("true", requestPropertyMap.get(KerberosHelper.ALLOW_RETRY));
+    assertEquals("missing", requestPropertyMap.get(KerberosHelperImpl.SupportedCustomOperation.REGENERATE_KEYTABS.name().toLowerCase()));
+    assertEquals(UpdateConfigurationPolicy.NEW_AND_IDENTITIES.name(), requestPropertyMap.get(KerberosHelper.DIRECTIVE_CONFIG_UPDATE_POLICY.toLowerCase()));
+  }
+
+  /**
    *
    */
   private class MockModule implements Module {
     /**
-   *
-   */
+     *
+     */
     @Override
     public void configure(Binder binder) {
       binder.bind(ConfigHelper.class).toInstance(configHelper);
       binder.bind(AgentConfigsHolder.class).toInstance(agentConfigsHolder);
+      binder.bind(KerberosHelper.class).toInstance(kerberosHelperMock);
     }
   }
 }

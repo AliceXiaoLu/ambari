@@ -121,10 +121,10 @@ public class ServiceService extends BaseService {
       responseContainer = RESPONSE_CONTAINER_LIST)
   @ApiImplicitParams({
       @ApiImplicitParam(name = QUERY_FIELDS, value = QUERY_FILTER_DESCRIPTION,
-          defaultValue = "ServiceInfo/service_name, ServiceInfo/cluster_name",
+          defaultValue = "ServiceInfo/service_name,ServiceInfo/cluster_name",
           dataType = DATA_TYPE_STRING, paramType = PARAM_TYPE_QUERY),
       @ApiImplicitParam(name = QUERY_SORT, value = QUERY_SORT_DESCRIPTION,
-          defaultValue = "ServiceInfo/service_name.asc, ServiceInfo/cluster_name.asc",
+          defaultValue = "ServiceInfo/service_name.asc,ServiceInfo/cluster_name.asc",
           dataType = DATA_TYPE_STRING, paramType = PARAM_TYPE_QUERY),
       @ApiImplicitParam(name = QUERY_PAGE_SIZE, value = QUERY_PAGE_SIZE_DESCRIPTION, defaultValue = DEFAULT_PAGE_SIZE, dataType = DATA_TYPE_INT, paramType = PARAM_TYPE_QUERY),
       @ApiImplicitParam(name = QUERY_FROM, value = QUERY_FROM_DESCRIPTION, defaultValue = DEFAULT_FROM, dataType = DATA_TYPE_STRING, paramType = PARAM_TYPE_QUERY),
@@ -153,7 +153,7 @@ public class ServiceService extends BaseService {
   @Path("{serviceName}")
   @Produces(MediaType.TEXT_PLAIN)
   @ApiOperation(value = "Creates a service",
-      nickname = "ServiceService#createServices"
+      nickname = "ServiceService#createService"
   )
   @ApiImplicitParams({
       @ApiImplicitParam(dataType = SERVICE_REQUEST_TYPE, paramType = PARAM_TYPE_BODY)
@@ -176,7 +176,7 @@ public class ServiceService extends BaseService {
 
   /**
    * Handles: POST /clusters/{clusterId}/services
-   * Create multiple services.
+   * Create services, possibly more than one.
    *
    * @param body        http body
    * @param headers     http headers
@@ -185,8 +185,8 @@ public class ServiceService extends BaseService {
    */
   @POST
   @Produces(MediaType.TEXT_PLAIN)
-  @ApiOperation(value = "Creates a service",
-      nickname = "ServiceService#createService"
+  @ApiOperation(value = "Creates services",
+      nickname = "ServiceService#createServices"
   )
   @ApiImplicitParams({
       @ApiImplicitParam(dataType = SERVICE_REQUEST_TYPE, paramType = PARAM_TYPE_BODY, allowMultiple = true)

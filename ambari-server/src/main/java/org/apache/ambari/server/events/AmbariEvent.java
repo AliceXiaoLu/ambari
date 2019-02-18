@@ -118,6 +118,11 @@ public abstract class AmbariEvent {
     CLUSTER_PROVISIONED,
 
     /**
+     * The cluster provision was started.
+     */
+    CLUSTER_PROVISION_STARTED,
+
+    /**
      * The service component recovery enabled field changed.
      */
     SERVICE_COMPONENT_RECOVERY_CHANGED,
@@ -190,7 +195,12 @@ public abstract class AmbariEvent {
     /**
      * Service credential store has been enabled or disabled..
      */
-    SERVICE_CREDENTIAL_STORE_UPDATE;
+    SERVICE_CREDENTIAL_STORE_UPDATE,
+
+    /**
+     * Message was not delivered to agent.
+     */
+    MESSAGE_NOT_DELIVERED;
   }
 
   /**

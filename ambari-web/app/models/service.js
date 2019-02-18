@@ -22,7 +22,14 @@ require('utils/config');
 
 App.Service = DS.Model.extend({
   serviceName: DS.attr('string', {defaultValue: ''}),
-  displayName: Em.computed.formatRole('serviceName', true),
+  displayName: function() {
+    const displayName = App.format.role(this.get('serviceName'), true);
+    if (this.get('hasMasterOrSlaveComponent') || displayName.endsWith('Client')) {
+      return displayName;
+    } else {
+      return displayName + ' Client';
+    }
+  }.property('serviceName'),
   passiveState: DS.attr('string', {defaultValue: "OFF"}),
   workStatus: DS.attr('string'),
   rand: DS.attr('string'),
@@ -64,6 +71,21 @@ App.Service = DS.Model.extend({
    * @type {bool}
    */
   isInPassive: Em.computed.equal('passiveState', 'ON'),
+  
+  /**
+   * @type {bool}
+   */
+  hasMasterOrSlaveComponent: function() {
+    if (App.router.get('clusterController.isHostComponentMetricsLoaded')) {
+      return this.get('slaveComponents').toArray()
+      .concat(this.get('masterComponents').toArray())
+      .mapProperty('totalCount')
+      .reduce((a, b) => a + b, 0) > 0;
+    } else {
+      //Assume that service has master or/and slave components until data loaded
+      return true;
+    }
+  }.property('slaveComponents.@each.totalCount', 'masterComponents.@each.totalCount'),
 
   serviceComponents: function() {
     var clientComponents = this.get('clientComponents').mapProperty('componentName');
@@ -168,16 +190,25 @@ App.Service = DS.Model.extend({
   }.property('restartRequiredHostsAndComponents'),
 
   /**
+   * @type {number}
+   */
+  warningCount: 0,
+  /**
+   * @type {number}
+   */
+  criticalCount: 0,
+
+  /**
    * Does service have Critical Alerts
    * @type {boolean}
    */
-  hasCriticalAlerts: false,
+  hasCriticalAlerts: Em.computed.gte('criticalCount', 0),
 
   /**
    * Number of the Critical and Warning alerts for current service
    * @type {number}
    */
-  alertsCount: 0
+  alertsCount: Em.computed.sumProperties('warningCount', 'criticalCount')
 
 });
 

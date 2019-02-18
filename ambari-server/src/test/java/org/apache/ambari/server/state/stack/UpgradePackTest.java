@@ -37,22 +37,23 @@ import org.apache.ambari.server.H2DatabaseCleaner;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
-import org.apache.ambari.server.state.stack.UpgradePack.PrerequisiteCheckConfig;
-import org.apache.ambari.server.state.stack.UpgradePack.ProcessingComponent;
-import org.apache.ambari.server.state.stack.upgrade.ClusterGrouping;
-import org.apache.ambari.server.state.stack.upgrade.ClusterGrouping.ExecuteStage;
-import org.apache.ambari.server.state.stack.upgrade.ConfigureTask;
-import org.apache.ambari.server.state.stack.upgrade.Direction;
-import org.apache.ambari.server.state.stack.upgrade.Grouping;
-import org.apache.ambari.server.state.stack.upgrade.HostOrderGrouping;
-import org.apache.ambari.server.state.stack.upgrade.ParallelScheduler;
-import org.apache.ambari.server.state.stack.upgrade.RestartGrouping;
-import org.apache.ambari.server.state.stack.upgrade.RestartTask;
-import org.apache.ambari.server.state.stack.upgrade.ServiceCheckGrouping;
-import org.apache.ambari.server.state.stack.upgrade.StopGrouping;
-import org.apache.ambari.server.state.stack.upgrade.Task;
-import org.apache.ambari.server.state.stack.upgrade.UpdateStackGrouping;
-import org.apache.ambari.server.state.stack.upgrade.UpgradeType;
+import org.apache.ambari.server.stack.upgrade.ClusterGrouping;
+import org.apache.ambari.server.stack.upgrade.ConfigureTask;
+import org.apache.ambari.server.stack.upgrade.Direction;
+import org.apache.ambari.server.stack.upgrade.ExecuteStage;
+import org.apache.ambari.server.stack.upgrade.Grouping;
+import org.apache.ambari.server.stack.upgrade.HostOrderGrouping;
+import org.apache.ambari.server.stack.upgrade.ParallelScheduler;
+import org.apache.ambari.server.stack.upgrade.RestartGrouping;
+import org.apache.ambari.server.stack.upgrade.RestartTask;
+import org.apache.ambari.server.stack.upgrade.ServiceCheckGrouping;
+import org.apache.ambari.server.stack.upgrade.StopGrouping;
+import org.apache.ambari.server.stack.upgrade.Task;
+import org.apache.ambari.server.stack.upgrade.UpdateStackGrouping;
+import org.apache.ambari.server.stack.upgrade.UpgradePack;
+import org.apache.ambari.server.stack.upgrade.UpgradePack.PrerequisiteCheckConfig;
+import org.apache.ambari.server.stack.upgrade.UpgradePack.ProcessingComponent;
+import org.apache.ambari.spi.upgrade.UpgradeType;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -87,6 +88,33 @@ public class UpgradePackTest {
   @After
   public void teardown() throws AmbariException, SQLException {
     H2DatabaseCleaner.clearDatabaseAndStopPersistenceService(injector);
+  }
+
+  /**
+   * Tests that boolean values are property serialized in the upgrade pack.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testIsDowngradeAllowed() throws Exception {
+    Map<String, UpgradePack> upgrades = ambariMetaInfo.getUpgradePacks("HDP", "2.2.0");
+    assertTrue(upgrades.size() > 0);
+
+    String upgradePackWithoutDowngrade = "upgrade_test_no_downgrade";
+    boolean foundAtLeastOnePackWithoutDowngrade = false;
+
+    for (String key : upgrades.keySet()) {
+      UpgradePack upgradePack = upgrades.get(key);
+      if (upgradePack.getName().equals(upgradePackWithoutDowngrade)) {
+        foundAtLeastOnePackWithoutDowngrade = true;
+        assertFalse(upgradePack.isDowngradeAllowed());
+        continue;
+      }
+
+      assertTrue(upgradePack.isDowngradeAllowed());
+    }
+
+    assertTrue(foundAtLeastOnePackWithoutDowngrade);
   }
 
   @Test

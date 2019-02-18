@@ -55,7 +55,6 @@ import com.google.inject.Inject;
 /**
  * Resource provider for view URLs.
  */
-@SuppressWarnings("Duplicates")
 @StaticallyInject
 public class ViewURLResourceProvider extends AbstractAuthorizedResourceProvider {
 
@@ -76,14 +75,14 @@ public class ViewURLResourceProvider extends AbstractAuthorizedResourceProvider 
   /**
    * The key property ids for a view URL resource.
    */
-  private static Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
+  private static final Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
       .put(Resource.Type.ViewURL, URL_NAME)
       .build();
 
   /**
    * The property ids for a view URL resource.
    */
-  private static Set<String> propertyIds = Sets.newHashSet(
+  private static final Set<String> propertyIds = Sets.newHashSet(
           URL_NAME,
           URL_SUFFIX,
           VIEW_INSTANCE_VERSION,
@@ -268,15 +267,16 @@ public class ViewURLResourceProvider extends AbstractAuthorizedResourceProvider 
           throw new IllegalStateException("The view " + viewName + " is not loaded.");
         }
 
-        ViewURLEntity viewUrl = viewInstanceEntity.getViewUrl();
-        Optional<ViewURLEntity> savedUrl = viewURLDAO.findByName(urlEntity.getUrlName());
+        if(viewInstanceEntity.getViewUrl() != null) {
+          throw new AmbariException("The view instance selected already has a linked URL");
+        }
 
-        if(savedUrl.isPresent()){
+        if(viewURLDAO.findByName(urlEntity.getUrlName()).isPresent()){
           throw new AmbariException("This view URL name exists, URL names should be unique");
         }
 
-        if(viewUrl != null) {
-          throw new AmbariException("The view instance selected already has a linked URL");
+        if (viewURLDAO.findBySuffix(urlEntity.getUrlSuffix()).isPresent()) {
+          throw new AmbariException("This view URL suffix has already been recorded, URL suffixes should be unique");
         }
 
         viewURLDAO.save(urlEntity);

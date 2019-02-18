@@ -33,6 +33,7 @@ import javax.persistence.EntityManager;
 
 import org.apache.ambari.server.agent.ExecutionCommand;
 import org.apache.ambari.server.controller.AmbariManagementController;
+import org.apache.ambari.server.mpack.MpackManagerFactory;
 import org.apache.ambari.server.security.SecurityHelper;
 import org.apache.ambari.server.security.SecurityHelperImpl;
 import org.apache.ambari.server.stack.StackManagerFactory;
@@ -78,13 +79,14 @@ public class UpdateKerberosConfigsServerActionTest extends EasyMockSupport{
       @Override
       protected void configure() {
         PartialNiceMockBinder.newBuilder(UpdateKerberosConfigsServerActionTest.this)
-            .addClustersBinding().build().configure(binder());
+            .addClustersBinding().addLdapBindings().build().configure(binder());
 
         bind(ConfigHelper.class).toInstance(createNiceMock(ConfigHelper.class));
         bind(OsFamily.class).toInstance(createNiceMock(OsFamily.class));
         bind(Clusters.class).to(ClustersImpl.class);
         bind(EntityManager.class).toInstance(createNiceMock(EntityManager.class));
         bind(StackManagerFactory.class).toInstance(EasyMock.createNiceMock(StackManagerFactory.class));
+        bind(MpackManagerFactory.class).toInstance(createNiceMock(MpackManagerFactory.class));
         bind(SecurityHelper.class).toInstance(SecurityHelperImpl.getInstance());
       }
     });

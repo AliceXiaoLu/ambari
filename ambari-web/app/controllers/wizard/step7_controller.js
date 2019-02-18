@@ -77,6 +77,11 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
   credentialsTabNextEnabled: false,
 
   /**
+   * Define state of next button on databases tab
+   */
+  databasesTabNextEnabled: false,
+
+  /**
    * used in services_config.js view to mark a config with security icon
    */
   secureConfigs: require('data/configs/wizards/secure_mapping'),
@@ -95,9 +100,13 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
    * Is installer controller used
    * @type {bool}
    */
-  isInstallWizard: function () {
-    return this.get('content.controllerName') === 'installerController';
-  }.property('content.controllerName'),
+  isInstallWizard: Em.computed.equal('content.controllerName', 'installerController'),
+
+  /**
+   * Is add service controller used
+   * @type {bool}
+   */
+  isAddServiceWizard: Em.computed.equal('content.controllerName', 'addServiceController'),
 
   /**
    * List of config groups
@@ -141,13 +150,19 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
    * Total number of recommendation and validation issues
    * @type {number}
    */
-  issuesCounter: 0,
+  issuesCounter: Em.computed.sumProperties('validationsCounter', 'suggestionsCounter'),
 
   /**
    * Number of ui-side validation issues
    * @type {number}
    */
   validationsCounter: 0,
+
+  /**
+   * Number of ui-side suggestion issues
+   * @type {number}
+   */
+  suggestionsCounter: 0,
 
   /**
    * Tab objects to represent each config category tab
@@ -163,7 +178,7 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
    * @type {boolean}
    */
   supportsPreInstallChecks: function () {
-    return App.get('supports.preInstallChecks') && 'installerController' === this.get('content.controllerName');
+    return App.get('supports.preInstallChecks') && this.get('isInstallWizard');
   }.property('App.supports.preInstallChecks', 'wizardController.name'),
 
   /**
@@ -213,7 +228,7 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
    */
   installedServiceNames: function () {
     var serviceNames = this.get('content.services').filterProperty('isInstalled').mapProperty('serviceName');
-    if (this.get('content.controllerName') !== 'installerController') {
+    if (!this.get('isInstallWizard')) {
       serviceNames = serviceNames.filter(function (_serviceName) {
         return !App.get('services.noConfigTypes').contains(_serviceName);
       });
@@ -590,15 +605,22 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
     }
 
     var rangerService = App.StackService.find().findProperty('serviceName', 'RANGER');
-    var isRangerServicePresent = rangerService && (rangerService.get('isInstalled') || rangerService.get('isSelected'));
+    const isRangerServicePresent = rangerService && (rangerService.get('isInstalled') || rangerService.get('isSelected'));
+    var infraSolrService = App.StackService.find().findProperty('serviceName', 'AMBARI_INFRA_SOLR');
+    const isInfraSolrPresent = infraSolrService && (infraSolrService.get('isInstalled') || infraSolrService.get('isSelected'));
     if(isRangerServicePresent && (this.get('wizardController.name') === 'installerController' || this.get('wizardController.name') === 'addServiceController')) {
       this.setRangerPluginsEnabled(serviceConfigs);
+      if (isInfraSolrPresent) {
+        this.setSolrCloudOn(serviceConfigs);
+      }
     }
+
     this.set('stepConfigs', serviceConfigs);
     this.set('stepConfigsCreated', true);
+    this.updateConfigAttributesFromThemes();
     this.checkHostOverrideInstaller();
     this.selectProperService();
-    var isInstallerWizard = (this.get("content.controllerName") === 'installerController');
+    var isInstallerWizard = this.get('isInstallWizard');
     var isRangerServiceAbsent =  rangerService && !rangerService.get('isInstalled') && !rangerService.get('isSelected');
     if (isRangerServiceAbsent) {
       var isExternalRangerSetup;
@@ -653,6 +675,12 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
         Em.set(pluginEnabledProperty, 'value', 'Yes');
       }
     });
+  },
+
+  setSolrCloudOn: function(stepConfigs) {
+    var rangerServiceConfigs = stepConfigs.findProperty('serviceName', 'RANGER').get('configs');
+    var solrCloudEnabledProperty = rangerServiceConfigs.findProperty('name', 'is_solrCloud_enabled');
+    Em.set(solrCloudEnabledProperty, 'value', 'true');
   },
 
   /**
@@ -1612,11 +1640,11 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
               this.hide();
               parent.hide();
               // go back to step 5: assign masters and disable default navigation warning
-              if ('installerController' === self.get('content.controllerName')) {
+              if (self.get('isInstallWizard')) {
                 App.router.get('installerController').gotoStep(5, true);
               }
               else {
-                if ('addServiceController' === self.get('content.controllerName')) {
+                if (self.get('isAddServiceWizard')) {
                   App.router.get('addServiceController').gotoStep(2, true);
                 }
               }
@@ -1783,21 +1811,24 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
   },
 
   postSubmit: function () {
-    var self = this;
     this.set('submitButtonClicked', true);
     if (this.get('isInstallWizard')) {
       this.serverSideValidationCallback();
     } else {
-      this.serverSideValidation().done(function () {
-        self.serverSideValidationCallback();
-      }).fail(function (value) {
+      this.serverSideValidation().done(() => {
+        this.serverSideValidationCallback();
+      }).fail(value => {
         if ("invalid_configs" === value) {
-          self.set('submitButtonClicked', false);
+          if (this.get('isAddServiceWizard')) {
+            this.get('configErrorList.issues').clear();
+            this.get('configErrorList.criticalIssues').clear();
+          }
+          this.set('submitButtonClicked', false);
           App.set('router.nextBtnClickInProgress', false);
         } else {
           // Failed due to validation mechanism failure.
           // Should proceed with other checks
-          self.serverSideValidationCallback();
+          this.serverSideValidationCallback();
         }
       });
     }
@@ -1879,6 +1910,9 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
   },
 
   selectService: function (event) {
+    this.get('stepConfigs').forEach((service) => {
+      service.set('isActive', service.get('serviceName') === event.context.serviceName);
+    });
     this.set('selectedService', event.context);
     var activeTabs = this.get('tabs').findProperty('isActive', true);
     if (activeTabs) {
@@ -1899,6 +1933,7 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
         isActive: false,
         isDisabled: false,
         isSkipped: false,
+        validateOnSwitch: false,
         tabView: App.CredentialsTabOnStep7View
       }),
       Em.Object.create({
@@ -1908,6 +1943,7 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
         isActive: false,
         isDisabled: false,
         isSkipped: false,
+        validateOnSwitch: false,
         tabView: App.DatabasesTabOnStep7View
       }),
       Em.Object.create({
@@ -1917,6 +1953,7 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
         isActive: false,
         isDisabled: false,
         isSkipped: false,
+        validateOnSwitch: false,
         selectedServiceName: null,
         tabView: App.DirectoriesTabOnStep7View
       }),
@@ -1927,6 +1964,7 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
         isActive: false,
         isDisabled: false,
         isSkipped: false,
+        validateOnSwitch: false,
         tabView: App.AccountsTabOnStep7View
       }),
       Em.Object.create({
@@ -1936,6 +1974,7 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
         isActive: false,
         isDisabled: false,
         isSkipped: false,
+        validateOnSwitch: true,
         selectedServiceName: null,
         tabView: App.ServicesConfigView
       })
@@ -2019,12 +2058,14 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
     switch (tabName) {
       case 'credentials':
         return !this.get('credentialsTabNextEnabled');
+      case 'databases':
+        return !this.get('databasesTabNextEnabled');
       case 'all-configurations':
         return this.get('isSubmitDisabled');
       default:
         return false;
     }
-  }.property('tabs.@each.isActive', 'isSubmitDisabled', 'credentialsTabNextEnabled'),
+  }.property('tabs.@each.isActive', 'isSubmitDisabled', 'credentialsTabNextEnabled', 'databasesTabNextEnabled'),
 
   /**
    * Set isDisabled state for tabs
@@ -2047,6 +2088,9 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
     Em.run.next(this, function () {
       this.set('filter', propertyName);
     });
+
+    this.get('stepConfigs').setEach('isActive', false);
+    stepConfig.set('isActive', true);
   },
 
   /**
@@ -2070,11 +2114,11 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
     var recommendations = this.get('changedProperties.length');
     var validations = this.get('stepConfigs').mapProperty('configsWithErrors.length').reduce(Em.sum, 0);
     var configErrorList = this.get('configErrorList');
-    this.set('issuesCounter', recommendations + validations + configErrorList.get('issues.length') + configErrorList.get('criticalIssues.length'));
+    this.set('suggestionsCounter', recommendations + configErrorList.get('issues.length') + configErrorList.get('criticalIssues.length'));
     if (validations !== this.get('validationsCounter')) {
       this.ringBell();
     }
-    this.set('hasErrors', !!validations);
+    this.set('hasErrors', Boolean(validations + configErrorList.get('criticalIssues.length')));
     this.set('validationsCounter', validations);
   }.observes('changedProperties.length', 'stepConfigs.@each.configsWithErrors.length', 'configErrorList.issues.length', 'configErrorList.criticalIssues.length'),
 
@@ -2112,6 +2156,27 @@ App.WizardStep7Controller = Em.Controller.extend(App.ServerValidatorMixin, App.E
     } else {
       App.router.send('back');
     }
-  }
+  },
+
+  updateConfigAttributesFromThemes: function () {
+    this.get('allSelectedServiceNames').forEach(serviceName => this.updateAttributesFromTheme(serviceName));
+  },
+
+  validateOnTabSwitch: function () {
+    const activeTab = this.get('tabs')[this.get('currentTabIndex')];
+    if (activeTab && activeTab.get('validateOnSwitch')) {
+      if (this.get('requestTimer')) {
+        clearTimeout(this.get('requestTimer'));
+      }
+      if (this.get('validationRequest')) {
+        this.get('validationRequest').abort();
+      }
+      if (this.get('recommendationsInProgress')) {
+        this.valueObserver();
+      } else {
+        this.runServerSideValidation().done(() => this.set('validationRequest', null));
+      }
+    }
+  }.observes('currentTabIndex')
 
 });

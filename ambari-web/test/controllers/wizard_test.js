@@ -264,7 +264,7 @@ describe('App.WizardController', function () {
   });
 
   describe('#showLaunchBootstrapPopup', function () {
-    afterEach(function(){
+    beforeEach(function(){
       App.ModalPopup.show.restore();
     });
 
@@ -583,12 +583,10 @@ describe('App.WizardController', function () {
 
   describe('#gotoStep', function () {
     beforeEach(function(){
-      sinon.stub(App.ModalPopup,'show', Em.K);
-      sinon.stub(App.clusterStatus,'setClusterStatus', Em.K);  
+      sinon.stub(App.clusterStatus,'setClusterStatus', Em.K);
       sinon.stub(App.router,'send', Em.K);  
     });
     afterEach(function(){
-      App.ModalPopup.show.restore();
       App.clusterStatus.setClusterStatus.restore();
       App.router.send.restore();
     });
@@ -1754,6 +1752,42 @@ describe('App.WizardController', function () {
       ]);
     });
   });
-
+  
+  describe('#setStackServiceSelectedByDefault', function() {
+   
+    it('regular service should be selected', function() {
+      var service = {
+        StackServices: {
+          selection: null,
+          service_name: 'S1'
+        }
+      };
+      c.setStackServiceSelectedByDefault(service);
+      expect(service.StackServices.is_selected).to.be.true;
+    });
+  
+    it('TECH_PREVIEW service should not be selected', function() {
+      var service = {
+        StackServices: {
+          selection: "TECH_PREVIEW",
+          service_name: 'S1'
+        }
+      };
+      c.setStackServiceSelectedByDefault(service);
+      expect(service.StackServices.is_selected).to.be.false;
+    });
+  
+    it('service_type service should not be selected', function() {
+      var service = {
+        StackServices: {
+          selection: null,
+          service_name: 'S1',
+          service_type: 'HCFS'
+        }
+      };
+      c.setStackServiceSelectedByDefault(service);
+      expect(service.StackServices.is_selected).to.be.false;
+    });
+  });
 
 });

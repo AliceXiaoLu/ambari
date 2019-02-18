@@ -78,7 +78,7 @@ VER_NT_SERVER = 3
 _IS_ORACLE_LINUX = os.path.exists('/etc/oracle-release')
 _IS_REDHAT_LINUX = os.path.exists('/etc/redhat-release')
 
-SYSTEM_RELEASE_FILE = "/etc/system-release"
+OS_RELEASE_FILE = "/etc/os-release"
 
 def _is_oracle_linux():
   return _IS_ORACLE_LINUX
@@ -91,13 +91,16 @@ def _is_powerpc():
 
 def advanced_check(distribution):
   distribution = list(distribution)
-  if os.path.exists(SYSTEM_RELEASE_FILE):
-    with open(SYSTEM_RELEASE_FILE, "rb") as fp:
-      issue_content = fp.read()
+  if os.path.exists(OS_RELEASE_FILE):
+    with open(OS_RELEASE_FILE, "rb") as fp:
+      file_content = fp.read()
   
-    if "Amazon" in issue_content:
+    search_groups = re.search('NAME="(.+)"', file_content)
+    name = search_groups.group(1) if search_groups else ''
+
+    if "amazon" in name.lower():
       distribution[0] = "amazonlinux"
-      search_groups = re.search(' release (\d+)', issue_content)
+      search_groups = re.search('VERSION_ID="(\d+)"', file_content)
       
       if search_groups:
         distribution[1] = search_groups.group(1)
@@ -189,19 +192,17 @@ class OSCheck:
         distribution = (release, "{0}.{1}".format(major,minor),"WindowsServer")
       else:
         # we are on unsupported desktop os
-        distribution = ("", "","")
+        distribution = ("", "", "")
     else:
       # linux distribution
       PYTHON_VER = sys.version_info[0] * 10 + sys.version_info[1]
 
-      if PYTHON_VER < 26:
-        distribution = platform.dist()
+      if PYTHON_VER <= 26:
+        raise RuntimeError("Python 2.6 or less not supported")
       elif _is_redhat_linux():
         distribution = platform.dist()
       else:
         distribution = platform.linux_distribution()
-        
-    
 
     if distribution[0] == '':
       distribution = advanced_check(distribution)

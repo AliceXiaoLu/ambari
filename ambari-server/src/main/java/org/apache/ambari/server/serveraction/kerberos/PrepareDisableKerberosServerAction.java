@@ -203,10 +203,15 @@ public class PrepareDisableKerberosServerAction extends AbstractPrepareKerberosS
       kerberosHelper.applyStackAdvisorUpdates(cluster, services, configurations, kerberosConfigurations,
           propertiesToIgnore, configurationsToRemove, false);
 
-      processConfigurationChanges(dataDirectory, kerberosConfigurations, configurationsToRemove);
+      processConfigurationChanges(dataDirectory, kerberosConfigurations, configurationsToRemove, kerberosDescriptor, getUpdateConfigurationPolicy(commandParameters));
     }
 
     return createCommandReport(0, HostRoleStatus.COMPLETED, "{}", actionLog.getStdOut(), actionLog.getStdErr());
+  }
+
+  @Override
+  protected boolean pruneServiceFilter() {
+    return false;
   }
 }
 

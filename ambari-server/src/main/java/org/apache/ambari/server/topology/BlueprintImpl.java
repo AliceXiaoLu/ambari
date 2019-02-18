@@ -10,8 +10,7 @@
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distribut
- * ed on an "AS IS" BASIS,
+ * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
@@ -65,8 +64,7 @@ public class BlueprintImpl implements Blueprint {
   public BlueprintImpl(BlueprintEntity entity) throws NoSuchStackException {
     this.name = entity.getBlueprintName();
     if (entity.getSecurityType() != null) {
-      this.security = new SecurityConfiguration(entity.getSecurityType(), entity.getSecurityDescriptorReference(),
-        null);
+      this.security = SecurityConfiguration.of(entity.getSecurityType(), entity.getSecurityDescriptorReference(), null);
     }
 
     parseStack(entity.getStack());

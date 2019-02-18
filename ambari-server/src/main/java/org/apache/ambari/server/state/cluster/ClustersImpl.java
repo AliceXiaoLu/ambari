@@ -43,7 +43,6 @@ import org.apache.ambari.server.agent.stomp.MetadataHolder;
 import org.apache.ambari.server.agent.stomp.TopologyHolder;
 import org.apache.ambari.server.agent.stomp.dto.TopologyCluster;
 import org.apache.ambari.server.controller.AmbariManagementControllerImpl;
-import org.apache.ambari.server.events.HostRegisteredEvent;
 import org.apache.ambari.server.events.HostsAddedEvent;
 import org.apache.ambari.server.events.HostsRemovedEvent;
 import org.apache.ambari.server.events.TopologyUpdateEvent;
@@ -281,37 +280,43 @@ public class ClustersImpl implements Clusters {
   private void loadClustersAndHosts() {
     LOG.info("Initializing cluster and host data.");
 
-    clustersByName = new ConcurrentHashMap<>();
-    clustersById = new ConcurrentHashMap<>();
-    hostsByName = new ConcurrentHashMap<>();
-    hostsById = new ConcurrentHashMap<>();
-    hostClustersMap = new ConcurrentHashMap<>();
-    clusterHostsMap1 = new ConcurrentHashMap<>();
+    ConcurrentHashMap<String, Cluster> clustersByNameTemp = new ConcurrentHashMap<>();
+    ConcurrentHashMap<Long, Cluster> clustersByIdTemp = new ConcurrentHashMap<>();
+    ConcurrentHashMap<String, Host> hostsByNameTemp = new ConcurrentHashMap<>();
+    ConcurrentHashMap<Long, Host> hostsByIdTemp = new ConcurrentHashMap<>();
+    ConcurrentHashMap<String, Set<Cluster>> hostClustersMapTemp = new ConcurrentHashMap<>();
+    ConcurrentHashMap<String, Set<Host>> clusterHostsMap1Temp = new ConcurrentHashMap<>();
 
     List<HostEntity> hostEntities = hostDAO.findAll();
     for (HostEntity hostEntity : hostEntities) {
       Host host = hostFactory.create(hostEntity);
-      hostsByName.put(hostEntity.getHostName(), host);
-      hostsById.put(hostEntity.getHostId(), host);
+      hostsByNameTemp.put(hostEntity.getHostName(), host);
+      hostsByIdTemp.put(hostEntity.getHostId(), host);
     }
+    hostsByName = hostsByNameTemp;
+    hostsById = hostsByIdTemp;
 
     for (ClusterEntity clusterEntity : clusterDAO.findAll()) {
       Cluster currentCluster = clusterFactory.create(clusterEntity);
-      clustersByName.put(clusterEntity.getClusterName(), currentCluster);
-      clustersById.put(currentCluster.getClusterId(), currentCluster);
-      clusterHostsMap1.put(currentCluster.getClusterName(), Collections.newSetFromMap(new ConcurrentHashMap<>()));
+      clustersByNameTemp.put(clusterEntity.getClusterName(), currentCluster);
+      clustersByIdTemp.put(currentCluster.getClusterId(), currentCluster);
+      clusterHostsMap1Temp.put(currentCluster.getClusterName(), Collections.newSetFromMap(new ConcurrentHashMap<>()));
     }
+    clustersByName = clustersByNameTemp;
+    clustersById = clustersByIdTemp;
 
     for (HostEntity hostEntity : hostEntities) {
       Set<Cluster> cSet = Collections.newSetFromMap(new ConcurrentHashMap<Cluster, Boolean>());
-      hostClustersMap.put(hostEntity.getHostName(), cSet);
+      hostClustersMapTemp.put(hostEntity.getHostName(), cSet);
 
       Host host = getHostsByName().get(hostEntity.getHostName());
       for (ClusterEntity clusterEntity : hostEntity.getClusterEntities()) {
-        clusterHostsMap1.get(clusterEntity.getClusterName()).add(host);
+        clusterHostsMap1Temp.get(clusterEntity.getClusterName()).add(host);
         cSet.add(clustersByName.get(clusterEntity.getClusterName()));
       }
     }
+    hostClustersMap = hostClustersMapTemp;
+    clusterHostsMap1 = clusterHostsMap1Temp;
     // init host configs
     for (Long hostId : hostsById.keySet()) {
       try {
@@ -537,10 +542,6 @@ public class ClustersImpl implements Clusters {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Adding a host to Clusters, hostname={}", hostname);
     }
-
-    // publish the event
-    HostRegisteredEvent event = new HostRegisteredEvent(hostname);
-    eventPublisher.publish(event);
   }
 
   @Override
@@ -705,9 +706,7 @@ public class ClustersImpl implements Clusters {
   }
 
   @Override
-  public Map<String, Host> getHostsForCluster(String clusterName)
-      throws AmbariException {
-
+  public Map<String, Host> getHostsForCluster(String clusterName) {
     Map<String, Host> hosts = new HashMap<>();
     for (Host h : getClusterHostsMap().get(clusterName)) {
       hosts.put(h.getHostName(), h);

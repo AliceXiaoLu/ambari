@@ -97,7 +97,10 @@ class TestUpgradeSummary(TestCase):
         "type":"rolling_upgrade",
         "isRevert":False,
         "orchestration":"STANDARD",
-        "isDowngradeAllowed": True
+        "associatedStackId":"HDP-2.5",
+        "associatedVersion":"2.5.9.9-9999",
+        "isDowngradeAllowed": True,
+        "isSwitchBits": False
       }
     }
 
@@ -134,6 +137,9 @@ class TestUpgradeSummary(TestCase):
         "type":"rolling_upgrade",
         "isRevert":False,
         "orchestration":"STANDARD",
-        "isDowngradeAllowed": True
+        "associatedStackId":"HDP-2.5",
+        "associatedVersion":"2.5.9.9-9999",
+        "isDowngradeAllowed": True,
+        "isSwitchBits": False
       }
     }

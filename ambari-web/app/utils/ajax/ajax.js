@@ -235,11 +235,6 @@ var urls = {
     'mock': '/data/background_operations/host_upgrade_tasks.json'
   },
 
-  'service.ambari': {
-    'real': '/services/AMBARI?fields=components/RootServiceComponents',
-    'mock': '/data/services/ambari.json'
-  },
-
   'ambari.service.load_server_version': {
     'real': '/services/AMBARI?fields=components/RootServiceComponents/component_version&components/RootServiceComponents/component_name=AMBARI_SERVER&minimal_response=true',
     'mock': '/data/services/ambari.json'
@@ -988,6 +983,9 @@ var urls = {
     'real': '/clusters/{clusterName}/host_components?HostRoles/component_name=NAMENODE&HostRoles/host_name.in({hostNames})&fields=metrics/dfs/namenode',
     'mock': '/data/hosts/HDP2/decommission_state.json'
   },
+  'host.host_component.decommission_status_regionserver': {
+    'real': '/clusters/{clusterName}/host_components?HostRoles/component_name=HBASE_MASTER&HostRoles/host_name={hostName}&fields=metrics/hbase/master/liveRegionServersHosts,metrics/hbase/master/deadRegionServersHosts&minimal_response=true'
+  },
   'host.region_servers.in_inservice': {
     'real': '/clusters/{clusterName}/host_components?HostRoles/component_name=HBASE_REGIONSERVER&HostRoles/desired_admin_state=INSERVICE&fields=HostRoles/host_name&minimal_response=true',
     'mock': ''
@@ -1440,6 +1438,10 @@ var urls = {
     'real': '/clusters/{clusterName}/hosts/{hostName}/host_components/NAMENODE',
     'mock': ''
   },
+  'admin.high_availability.getNnCheckPointsStatuses': {
+    'real': '/clusters/{clusterName}/host_components?HostRoles/component_name=NAMENODE&HostRoles/host_name.in({hostNames})&fields=HostRoles/desired_state,metrics/dfs/namenode&minimal_response=true',
+    'mock': ''
+  },
   'admin.high_availability.getJnCheckPointStatus': {
     'real': '/clusters/{clusterName}/hosts/{hostName}/host_components/JOURNALNODE?fields=metrics',
     'mock': ''
@@ -1695,9 +1697,19 @@ var urls = {
     'real': '/clusters/{clusterName}/upgrades/{upgradeId}/upgrade_groups/{groupId}/upgrade_items/{stageId}?fields=' +
     'UpgradeItem/group_id,' +
     'UpgradeItem/stage_id,' +
-    'tasks/Tasks/*&' +
+    'tasks/Tasks/command_detail,' +
+    'tasks/Tasks/host_name,' +
+    'tasks/Tasks/role,' +
+    'tasks/Tasks/request_id,' +
+    'tasks/Tasks/stage_id,' +
+    'tasks/Tasks/status,' +
+    'tasks/Tasks/structured_out&' +
     'minimal_response=true',
     'mock': '/data/stack_versions/upgrade_item.json'
+  },
+  'admin.upgrade.upgrade_task': {
+    'real': '/clusters/{clusterName}/upgrades/{upgradeId}/upgrade_groups/{groupId}/upgrade_items/{stageId}/tasks/{taskId}',
+    'mock': ''
   },
   'admin.upgrade.service_checks': {
     'real': '/clusters/{clusterName}/upgrades/{upgradeId}/upgrade_groups?upgrade_items/UpgradeItem/status=COMPLETED&upgrade_items/tasks/Tasks/status.in(FAILED,ABORTED,TIMEDOUT)&upgrade_items/tasks/Tasks/command=SERVICE_CHECK&fields=upgrade_items/tasks/Tasks/command_detail,tasks/Tasks/ops_display_name,upgrade_items/tasks/Tasks/status&minimal_response=true'
@@ -1929,7 +1941,7 @@ var urls = {
   },
 
   'admin.kerberos_security.regenerate_keytabs.service' : {
-    'real': '/clusters/{clusterName}?regenerate_keytabs=all&regenerate_components={serviceName}',
+    'real': '/clusters/{clusterName}?regenerate_keytabs=all&regenerate_components={serviceName}&config_update_policy=none',
     'mock': '',
     'type': 'PUT',
     'format': function (data) {
@@ -1944,7 +1956,7 @@ var urls = {
   },
 
   'admin.kerberos_security.regenerate_keytabs.host' : {
-    'real': '/clusters/{clusterName}?regenerate_keytabs=all&regenerate_hosts={hostName}',
+    'real': '/clusters/{clusterName}?regenerate_keytabs=all&regenerate_hosts={hostName}&config_update_policy=none',
     'mock': '',
     'type': 'PUT',
     'format': function (data) {
@@ -2036,7 +2048,7 @@ var urls = {
     'type': 'DELETE'
   },
   'wizard.service_components': {
-    'real': '{stackUrl}/services?fields=StackServices/*,components/*,components/dependencies/Dependencies/scope,components/dependencies/Dependencies/service_name,artifacts/Artifacts/artifact_name',
+    'real': '{stackUrl}/services?fields=StackServices/*,components/*,components/dependencies/Dependencies/scope,components/dependencies/Dependencies/service_name,components/dependencies/Dependencies/type,artifacts/Artifacts/artifact_name',
     'mock': '/data/stacks/HDP-2.1/service_components.json'
   },
   'wizard.step9.installer.get_host_status': {
@@ -2820,6 +2832,10 @@ var urls = {
     'real': '/hosts?Hosts/host_name.in({hostNames})&fields=Hosts/cpu_count,Hosts/disk_info,Hosts/total_mem,Hosts/ip,Hosts/os_type,Hosts/os_arch,Hosts/public_host_name&minimal_response=true',
     'mock': ''
   },
+  'hosts.ips': {
+    'real': '/hosts?Hosts/host_name.in({hostNames})&fields=Hosts/ip',
+    'mock': ''
+  },
   'hosts.host_components.pre_load': {
     real: '',
     mock: '/data/hosts/HDP2/hosts.json',
@@ -2846,7 +2862,7 @@ var urls = {
     }
   },
   'hosts.bulk.operations': {
-    real: '/clusters/{clusterName}/hosts?fields=Hosts/host_name,Hosts/maintenance_state,' +
+    real: '/clusters/{clusterName}/hosts?fields=Hosts/host_name,Hosts/host_state,Hosts/maintenance_state,' +
     'host_components/HostRoles/state,host_components/HostRoles/maintenance_state,' +
     'Hosts/total_mem,stack_versions/HostStackVersions,stack_versions/repository_versions/RepositoryVersions/repository_version,' +
     'stack_versions/repository_versions/RepositoryVersions/id,' +
@@ -2892,7 +2908,7 @@ var urls = {
     mock: '/data/configurations/service_version.json'
   },
   'service.serviceConfigVersions.get.multiple': {
-    real: '/clusters/{clusterName}/configurations/service_config_versions?service_name={serviceName}&service_config_version.in({serviceConfigVersions}){additionalParams}',
+    real: '/clusters/{clusterName}/configurations/service_config_versions?(service_name={serviceName}%26service_config_version.in({serviceConfigVersions})){additionalParams}',
     mock: '/data/configurations/service_version.json',
     format: function (data) {
       return {
@@ -3193,6 +3209,15 @@ var urls = {
         })
       }
     }
+  },
+  'hiveServerInteractive.getStatus': {
+    real: '',
+    mock: '',
+    format: function (data) {
+      return {
+        url: 'http://' + data.hsiHost + ':' + data.port + '/leader'
+      }
+    }
   }
 };
 /**
@@ -3416,7 +3441,7 @@ var ajax = Em.Object.extend({
    * Upon error with one of these statuses modal should be displayed
    * @type {Array}
    */
-  statuses: ['500', '401', '407', '413'],
+  statuses: [500, 401, 407, 413],
 
   /**
    * defaultErrorHandler function is referred from App.ajax.send function and App.HttpClient.defaultErrorHandler function

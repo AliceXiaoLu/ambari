@@ -30,18 +30,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.ambari.annotations.Experimental;
+import org.apache.ambari.annotations.ExperimentalFeature;
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
+import org.apache.ambari.server.stack.upgrade.Direction;
+import org.apache.ambari.server.stack.upgrade.ExecuteHostType;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeContext;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.ConfigHelper;
 import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.MaintenanceState;
 import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentHost;
-import org.apache.ambari.server.state.UpgradeContext;
 import org.apache.ambari.server.state.UpgradeState;
-import org.apache.ambari.server.state.stack.upgrade.Direction;
-import org.apache.ambari.server.state.stack.upgrade.ExecuteHostType;
 import org.apache.ambari.server.utils.HTTPUtils;
 import org.apache.ambari.server.utils.HostAndPort;
 import org.apache.ambari.server.utils.StageUtils;
@@ -52,7 +54,11 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.Lists;
 import com.google.common.reflect.TypeToken;
 
-
+/**
+ * Class that determines hosts that are active or standby for services that
+ * support HA
+ */
+@Experimental(feature=ExperimentalFeature.REFACTOR_TO_SPI)
 public class MasterHostResolver {
 
   private static final Logger LOG = LoggerFactory.getLogger(MasterHostResolver.class);
@@ -176,7 +182,7 @@ public class MasterHostResolver {
       String serviceName, String componentName) {
     Collection<Host> candidates = cluster.getHosts();
     if (StringUtils.isNotBlank(serviceName) && StringUtils.isNotBlank(componentName)) {
-      List<ServiceComponentHost> schs = cluster.getServiceComponentHosts(serviceName,componentName);      
+      List<ServiceComponentHost> schs = cluster.getServiceComponentHosts(serviceName,componentName);
       candidates = schs.stream().map(sch -> sch.getHost()).collect(Collectors.toList());
     }
 
@@ -185,23 +191,23 @@ public class MasterHostResolver {
     }
 
     // figure out where to add the new component
-    List<Host> hosts = Lists.newArrayList();
+    List<Host> winners = Lists.newArrayList();
     switch (executeHostType) {
       case ALL:
-        hosts.addAll(candidates);
+        winners.addAll(candidates);
         break;
       case FIRST:
-        hosts.add(candidates.iterator().next());
+        winners.add(candidates.iterator().next());
         break;
       case MASTER:
-        hosts.add(candidates.iterator().next());
+        winners.add(candidates.iterator().next());
         break;
       case ANY:
-        hosts.add(candidates.iterator().next());
+        winners.add(candidates.iterator().next());
         break;
     }
 
-    return candidates;
+    return winners;
   }
 
   /**

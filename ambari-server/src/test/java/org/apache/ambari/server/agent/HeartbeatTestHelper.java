@@ -44,6 +44,7 @@ import org.apache.ambari.server.actionmanager.Request;
 import org.apache.ambari.server.actionmanager.Stage;
 import org.apache.ambari.server.actionmanager.StageFactory;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
+import org.apache.ambari.server.events.publishers.STOMPUpdatePublisher;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
 import org.apache.ambari.server.orm.OrmTestHelper;
 import org.apache.ambari.server.orm.dao.ClusterDAO;
@@ -56,6 +57,7 @@ import org.apache.ambari.server.orm.entities.ResourceEntity;
 import org.apache.ambari.server.orm.entities.ResourceTypeEntity;
 import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.security.authorization.ResourceType;
+import org.apache.ambari.server.security.encryption.Encryptor;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
@@ -65,6 +67,7 @@ import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.cluster.ClustersImpl;
 import org.apache.ambari.server.state.fsm.InvalidStateTransitionException;
 import org.apache.ambari.server.state.svccomphost.ServiceComponentHostStartEvent;
+import org.easymock.EasyMock;
 
 import com.google.inject.Inject;
 import com.google.inject.Injector;
@@ -117,13 +120,14 @@ public class HeartbeatTestHelper {
       @Override
       protected void configure() {
         super.configure();
+        binder().bind(STOMPUpdatePublisher.class).toInstance(EasyMock.createNiceMock(STOMPUpdatePublisher.class));
       }
     };
   }
 
   public HeartBeatHandler getHeartBeatHandler(ActionManager am)
       throws InvalidStateTransitionException, AmbariException {
-    HeartBeatHandler handler = new HeartBeatHandler(clusters, am, injector);
+    HeartBeatHandler handler = new HeartBeatHandler(clusters, am, Encryptor.NONE, injector);
     Register reg = new Register();
     HostInfo hi = new HostInfo();
     hi.setHostName(DummyHostname1);
@@ -184,7 +188,7 @@ public class HeartbeatTestHelper {
     // forcefully will refresh the internal state so that any tests which
     // incorrect use Clusters after calling this won't be affected
     Clusters clusters = injector.getInstance(Clusters.class);
-    Method method = ClustersImpl.class.getDeclaredMethod("loadClustersAndHosts");
+    Method method = ClustersImpl.class.getDeclaredMethod("safelyLoadClustersAndHosts");
     method.setAccessible(true);
     method.invoke(clusters);
 

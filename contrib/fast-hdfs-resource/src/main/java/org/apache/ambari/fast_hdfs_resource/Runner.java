@@ -22,6 +22,10 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -52,64 +56,120 @@ public class Runner {
 
     Gson gson = new Gson();
     Resource[] resources = null;
-    FileSystem dfs = null;
+    Map<String, FileSystem> fileSystemNameToInstance = new HashMap<String, FileSystem>();
+    Map<String, List<Resource>> fileSystemToResource = new HashMap<String, List<Resource>>();
 
+    boolean failed = false;
     try {
-      Configuration conf = new Configuration();
-      dfs = FileSystem.get(conf);
-
       // 3 - Load data from JSON
       resources = (Resource[]) gson.fromJson(new FileReader(jsonFilePath),
           Resource[].class);
-
-      // 4 - Connect to HDFS
-      System.out.println("Using filesystem uri: " + FileSystem.getDefaultUri(conf).toString());
-      dfs.initialize(FileSystem.getDefaultUri(conf), conf);
       
+      Configuration conf = new Configuration();
+      FileSystem dfs = null;
+
+      String defaultFsSchema = FileSystem.getDefaultUri(conf).getScheme();
+
+      // Creating connections
       for (Resource resource : resources) {
-        System.out.println("Creating: " + resource);
+        String fsName = null;
+        URI targetURI = new URI(resource.getTarget());
+        String targetSchema = targetURI.getScheme();
 
-        Resource.checkResourceParameters(resource, dfs);
-
-        Path pathHadoop = null;
-
-        if (resource.getAction().equals("download")) {
-          pathHadoop = new Path(resource.getSource());
-        }
-        else {
-          String path = resource.getTarget();
-          pathHadoop = new Path(path);
-          if (!resource.isManageIfExists() && dfs.exists(pathHadoop)) {
-            System.out.println(
-                String.format("Skipping the operation for not managed DFS directory %s  since immutable_paths contains it.", path)
-            );
-            continue;
+        if(targetSchema != null && !targetSchema.equals(defaultFsSchema)) {
+          String authority = targetURI.getAuthority();
+          if(authority == null) {
+            authority = "";
           }
+          fsName = String.format("%s://%s/", targetSchema, authority);
+        } else if(resource.getNameservice() != null) {
+          fsName = resource.getNameservice();
         }
 
-        if (resource.getAction().equals("create")) {
-          // 5 - Create
-          Resource.createResource(resource, dfs, pathHadoop);
-          Resource.setMode(resource, dfs, pathHadoop);
-          Resource.setOwner(resource, dfs, pathHadoop);
-        } else if (resource.getAction().equals("delete")) {
-          // 6 - Delete
-          dfs.delete(pathHadoop, true);
-        } else if (resource.getAction().equals("download")) {
-          // 7 - Download
-          dfs.copyToLocalFile(pathHadoop, new Path(resource.getTarget()));
+        if(!fileSystemNameToInstance.containsKey(fsName)) {
+          URI fileSystemUrl;
+          if(fsName == null) {
+            fileSystemUrl = FileSystem.getDefaultUri(conf);
+          } else {
+            fileSystemUrl = new URI(fsName);
+          }
+
+          dfs = FileSystem.get(fileSystemUrl, conf);
+
+          // 4 - Connect to DFS
+          System.out.println("Initializing filesystem uri: " + fileSystemUrl);
+          dfs.initialize(fileSystemUrl, conf);
+
+          fileSystemNameToInstance.put(fsName, dfs);
+        }
+
+        if(!fileSystemToResource.containsKey(fsName)) {
+          fileSystemToResource.put(fsName, new ArrayList<Resource>());
+        }
+        fileSystemToResource.get(fsName).add(resource);
+      }
+
+      //for (Resource resource : resources) {
+      for (Map.Entry<String, List<Resource>> entry : fileSystemToResource.entrySet()) {
+        String nameservice = entry.getKey();
+        List<Resource> resourcesNameservice = entry.getValue();
+
+        for(Resource resource: resourcesNameservice) {
+          if (nameservice != null) {
+            System.out.println("Creating: " + resource + " in " + nameservice);
+          } else {
+            System.out.println("Creating: " + resource + " in default filesystem");
+          }
+
+          dfs = fileSystemNameToInstance.get(nameservice);
+
+          Resource.checkResourceParameters(resource, dfs);
+
+          Path pathHadoop = null;
+
+          if (resource.getAction().equals("download")) {
+            pathHadoop = new Path(resource.getSource());
+          } else {
+            String path = resource.getTarget();
+            pathHadoop = new Path(path);
+            if (!resource.isManageIfExists() && dfs.exists(pathHadoop)) {
+              System.out.println(
+                  String.format("Skipping the operation for not managed DFS directory %s  since immutable_paths contains it.", path)
+              );
+              continue;
+            }
+          }
+
+          if (resource.getAction().equals("create")) {
+            // 5 - Create
+            Resource.createResource(resource, dfs, pathHadoop);
+            Resource.setMode(resource, dfs, pathHadoop);
+            Resource.setOwner(resource, dfs, pathHadoop);
+          } else if (resource.getAction().equals("delete")) {
+            // 6 - Delete
+            dfs.delete(pathHadoop, true);
+          } else if (resource.getAction().equals("download")) {
+            // 7 - Download
+            dfs.copyToLocalFile(pathHadoop, new Path(resource.getTarget()));
+          }
         }
       }
     } 
     catch(Exception e) {
        System.out.println("Exception occurred, Reason: " + e.getMessage());
        e.printStackTrace();
+       failed = true;
     }
     finally {
-      dfs.close();
+      for(FileSystem dfs:fileSystemNameToInstance.values()) {
+        dfs.close();
+      }
     }
-
-    System.out.println("All resources created.");
+    if(!failed) {
+      System.out.println("All resources created.");
+    } else {
+      System.exit(1);
+    }
   }
 
 }

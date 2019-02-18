@@ -75,21 +75,24 @@ public class ArtifactResourceProvider extends AbstractResourceProvider {
   public static final String CLUSTER_NAME_PROPERTY = RESPONSE_KEY + PropertyHelper.EXTERNAL_PATH_SEP + CLUSTER_NAME;
   public static final String SERVICE_NAME_PROPERTY = RESPONSE_KEY + PropertyHelper.EXTERNAL_PATH_SEP + SERVICE_NAME;
 
+  // artifact names
+  public static final String KERBEROS_DESCRIPTOR = "kerberos_descriptor";
+
   /**
    * primary key fields
    */
-  private static Set<String> pkPropertyIds = new HashSet<>();
+  private static final Set<String> pkPropertyIds = new HashSet<>();
 
   /**
    * map of resource type to fk field
    */
-  private static Map<Resource.Type, String> keyPropertyIds =
+  private static final Map<Resource.Type, String> keyPropertyIds =
     new HashMap<>();
 
   /**
    * resource properties
    */
-  private static Set<String> propertyIds = new HashSet<>();
+  private static final Set<String> propertyIds = new HashSet<>();
 
   /**
    * map of resource type to type registration
@@ -547,6 +550,10 @@ public class ArtifactResourceProvider extends AbstractResourceProvider {
         requestProps.iterator().next().get(ARTIFACT_NAME_PROPERTY) != null;
   }
 
+  public static String toArtifactDataJson(Map<?,?> properties) {
+    return String.format("{ \"%s\": %s }", ARTIFACT_DATA_PROPERTY, jsonSerializer.toJson(properties));
+  }
+
   //todo: when static registration is changed to external registration, this interface
   //todo: should be extracted as a first class interface.
   /**
@@ -698,7 +705,7 @@ public class ArtifactResourceProvider extends AbstractResourceProvider {
 
     @Override
     public String fromPersistId(String value) throws AmbariException {
-      return controller.getClusters().getClusterById(Long.valueOf(value)).getClusterName();
+      return controller.getClusters().getClusterById(Long.parseLong(value)).getClusterName();
     }
 
     @Override

@@ -18,9 +18,6 @@
 
 package org.apache.ambari.server.api.services.stackadvisor.commands;
 
-import static org.apache.ambari.server.api.services.stackadvisor.recommendations.RecommendationResponse.BindingHostGroup;
-import static org.apache.ambari.server.api.services.stackadvisor.recommendations.RecommendationResponse.HostGroup;
-
 import java.io.File;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -32,35 +29,49 @@ import org.apache.ambari.server.api.services.stackadvisor.StackAdvisorException;
 import org.apache.ambari.server.api.services.stackadvisor.StackAdvisorRequest;
 import org.apache.ambari.server.api.services.stackadvisor.StackAdvisorRunner;
 import org.apache.ambari.server.api.services.stackadvisor.recommendations.RecommendationResponse;
+import org.apache.ambari.server.api.services.stackadvisor.recommendations.RecommendationResponse.BindingHostGroup;
+import org.apache.ambari.server.api.services.stackadvisor.recommendations.RecommendationResponse.HostGroup;
 import org.apache.ambari.server.controller.internal.AmbariServerConfigurationHandler;
 import org.apache.ambari.server.state.ServiceInfo;
+import org.apache.commons.collections.CollectionUtils;
+import org.codehaus.jackson.JsonNode;
 
 /**
  * {@link org.apache.ambari.server.api.services.stackadvisor.commands.StackAdvisorCommand} implementation for
  * configuration recommendation.
+ * <p>
+ * One of the following recommandataion types is indicated:
+ * <ul>
+ * <li>RECOMMEND_CONFIGURATIONS</li>
+ * <li>RECOMMEND_CONFIGURATIONS_FOR_SSO</li>
+ * <li>RECOMMEND_CONFIGURATIONS_FOR_KERBEROS</li>
+ * </ul>
  */
-public class ConfigurationRecommendationCommand extends
-    StackAdvisorCommand<RecommendationResponse> {
+public class ConfigurationRecommendationCommand extends StackAdvisorCommand<RecommendationResponse> {
 
-  public ConfigurationRecommendationCommand(File recommendationsDir,
+  private final StackAdvisorCommandType commandType;
+
+  public ConfigurationRecommendationCommand(StackAdvisorCommandType commandType, File recommendationsDir,
                                             String recommendationsArtifactsLifetime,
                                             ServiceInfo.ServiceAdvisorType serviceAdvisorType,
                                             int requestId,
                                             StackAdvisorRunner saRunner,
                                             AmbariMetaInfo metaInfo,
-                                            AmbariServerConfigurationHandler ambariServerConfigurationHandler) {
-    super(recommendationsDir, recommendationsArtifactsLifetime, serviceAdvisorType, requestId, saRunner, metaInfo, ambariServerConfigurationHandler);
+                                            AmbariServerConfigurationHandler ambariServerConfigurationHandler,
+                                            Map<String, JsonNode> hostInfoCache) {
+    super(recommendationsDir, recommendationsArtifactsLifetime, serviceAdvisorType, requestId, saRunner, metaInfo,
+        ambariServerConfigurationHandler, hostInfoCache);
+    this.commandType = commandType;
   }
 
   @Override
-  protected StackAdvisorCommandType getCommandType() {
-    return StackAdvisorCommandType.RECOMMEND_CONFIGURATIONS;
+  public StackAdvisorCommandType getCommandType() {
+    return commandType;
   }
 
   @Override
   protected void validate(StackAdvisorRequest request) throws StackAdvisorException {
-    if (request.getHosts() == null || request.getHosts().isEmpty() || request.getServices() == null
-        || request.getServices().isEmpty()) {
+    if (CollectionUtils.isEmpty(request.getHosts()) || CollectionUtils.isEmpty(request.getServices())) {
       throw new StackAdvisorException("Hosts and services must not be empty");
     }
   }

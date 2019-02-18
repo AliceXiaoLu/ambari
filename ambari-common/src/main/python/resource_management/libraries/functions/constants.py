@@ -123,3 +123,5 @@ class StackFeature:
   KAFKA_EXTENDED_SASL_SUPPORT = "kafka_extended_sasl_support"
   OOZIE_EXTJS_INCLUDED = "oozie_extjs_included"
   MULTIPLE_ENV_SH_FILES_SUPPORT = "multiple_env_sh_files_support"
+  AMS_LEGACY_HADOOP_SINK = "ams_legacy_hadoop_sink"
+  RANGER_ALL_ADMIN_CHANGE_DEFAULT_PASSWORD = 'ranger_all_admin_change_default_password'

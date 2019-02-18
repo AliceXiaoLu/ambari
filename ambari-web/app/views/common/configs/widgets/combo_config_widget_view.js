@@ -52,26 +52,47 @@ App.ComboConfigWidgetView = App.ConfigWidgetView.extend({
     this.addCustomMessage();
   },
 
+  customMessageServiceMapping: [
+    {
+      serviceName: 'HIVE', dbConfigName: 'hive_database'
+    },
+    {
+      serviceName: 'RANGER', dbConfigName: 'DB_FLAVOR'
+    },
+    {
+      serviceName: 'RANGER_KMS', dbConfigName: 'DB_FLAVOR'
+    }
+  ],
+
   addCustomMessage: function () {
-    // show warning alert about downloading db connector for hive database
-    if (this.get('config.name') === 'hive_database') {
+    // show warning alert about downloading db connector for services with databases
+    if (this.isCustomMessageRequired()) {
       this.set('config.additionalView', Em.View.extend({
         template: Em.Handlebars.compile('<div class="alert alert-warning enhanced-configs">{{{view.message}}}</div>'),
         message: function () {
           var selectedDb = dbUtils.getDBType(this.get('config.value'));
           var dbData = dbInfo.dpPropertiesMap[selectedDb];
+          var driver_jar = dbData.sql_jar_connector ? dbData.sql_jar_connector.split("/").pop() : 'driver.jar';
           return Em.I18n.t('services.service.config.database.msg.jdbcSetup.detailed').format(
             dbData.db_name,
             dbData.db_type,
-            dbData.driver,
+            driver_jar,
             dbData.driver_download_url,
             dbData.driver_download_url,
-            dbData.driver_name
+            dbData.driver_name,
+            this.get('config.serviceName').toCapital()
           );
         }.property('config.value'),
         config: this.get('config')
       }));
     }
+  },
+
+  isCustomMessageRequired: function () {
+    var self = this;
+    return this.get('customMessageServiceMapping').find(function (configMap) {
+      return configMap['serviceName'].toLowerCase() === self.get('config.serviceName').toLowerCase() && configMap['dbConfigName'].toLowerCase() === self.get('config.name').toLowerCase()
+    });
   },
 
   disableSwitchToTextBox: function () {

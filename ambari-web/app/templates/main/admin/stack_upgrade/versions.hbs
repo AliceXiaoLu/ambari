@@ -16,6 +16,33 @@
 * limitations under the License.
 }}
 
+{{#if view.stackVersionError}}
+  <div class="alert alert-warning" role="alert">
+    <div class="stack-error-row">
+      <div class="image-container">
+        <i class="glyphicon glyphicon-warning-sign"></i>
+      </div>
+      <div class="message-container">
+        <h4 class="display-inline">{{view.stackVersionError.title}}</h4>
+        <span class="stack-name">{{view.stackVersionError.stack}}</span>
+        <div>
+          {{view.stackVersionError.description}}
+        </div>
+      </div>
+      {{#havePermissions "AMBARI.MANAGE_STACK_VERSIONS"}}
+        <div class="btn-container">
+          <button class="btn btn-warning" {{action reinstallOutOfSyncComponents view.stackVersionError target="controller"}}>
+            {{t common.reinstall}}
+          </button>
+          <button class="btn btn-warning" {{action removeOutOfSyncComponents view.stackVersionError target="controller"}}>
+            {{t common.remove}}
+          </button>
+        </div>
+      {{/havePermissions}}
+    </div>
+  </div>
+{{/if}}
+
 <div id="versions-filter-section" class="btn-toolbar">
   {{#havePermissions "AMBARI.MANAGE_STACK_VERSIONS"}}
     <button class="btn btn-primary" {{action goToVersions target="view"}}  {{bindAttr disabled="App.router.wizardWatcherController.isNonWizardUser"}} id="manage-versions-link">
@@ -42,20 +69,20 @@
   </div>
 </div>
 <div id="versions-section" class="row col-md-12">
-  <div {{bindAttr class=":col-md-3 :left-menu-table view.hasSpecialTypeRepoVersion:has-special-type-repo-version"}}>
-    <table class="table border-extended-table">
-      <thead>
-      </thead>
-      <tbody>
-        {{#each service in view.services}}
-          <tr>
-            <td class="service-display-name">{{service.displayName}}</td>
-          </tr>
-        {{/each}}
-      </tbody>
-    </table>
+  <div {{bindAttr class=":col-md-2 :version-column :left-menu-table view.hasSpecialTypeRepoVersion:has-special-type-repo-version"}}>
+    {{#each service in view.services}}
+      <div class="service-cell-wrapper">
+        <div class="service-cell service-version-info">
+          <span class="service-label">{{service.displayName}}</span>
+        </div>
+      </div>
+    {{/each}}
+    <div class="service-cell-wrapper">
+      <div class="service-cell">
+      </div>
+    </div>
   </div>
-  <div class="col-md-9 versions-slides">
+  <div class="col-md-10 versions-slides">
     {{#if isLoaded}}
       <div class="versions-slides-bar">
         {{#each version in view.repoVersions}}

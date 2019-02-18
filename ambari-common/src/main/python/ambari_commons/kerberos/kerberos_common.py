@@ -52,10 +52,13 @@ class MissingKeytabs(object):
 
   @classmethod
   def from_kerberos_records(self, kerberos_record, hostname):
-    with_missing_keytab = (each for each in kerberos_record \
+    if kerberos_record is not None:
+      with_missing_keytab = (each for each in kerberos_record \
                            if not self.keytab_exists(each) or not self.keytab_has_principal(each, hostname))
-    return MissingKeytabs(
-      set(MissingKeytabs.Identity.from_kerberos_record(each, hostname) for each in with_missing_keytab))
+      return MissingKeytabs(
+        set(MissingKeytabs.Identity.from_kerberos_record(each, hostname) for each in with_missing_keytab))
+    else:
+      return MissingKeytabs(None)
 
   @staticmethod
   def keytab_exists(kerberos_record):
@@ -72,10 +75,10 @@ class MissingKeytabs(object):
     self.items = items
 
   def as_dict(self):
-    return [each._asdict() for each in self.items]
+    return [each._asdict() for each in self.items] if self.items is not None else []
 
   def __str__(self):
-    return "Missing keytabs:\n%s" % ("\n".join(map(str, self.items))) if self.items else 'No missing keytabs'
+    return "Missing keytabs:\n%s" % ("\n".join(map(str, self.items))) if self.items and self.items is not None else 'No missing keytabs'
 
 
 def write_krb5_conf(params):
@@ -166,3 +169,22 @@ def find_missing_keytabs(params, output_hook=lambda missing_keytabs: None):
   missing_keytabs = MissingKeytabs.from_kerberos_records(params.kerberos_command_params, params.hostname)
   Logger.info(str(missing_keytabs))
   output_hook(missing_keytabs.as_dict())
+
+# Encryption families from: http://web.mit.edu/KERBEROS/krb5-latest/doc/admin/conf_files/kdc_conf.html#encryption-types
+ENCRYPTION_FAMILY_MAP = {
+  'aes'       : ['aes256-cts-hmac-sha1-96', 'aes128-cts-hmac-sha1-96', 'aes256-cts-hmac-sha384-192', 'aes128-cts-hmac-sha256-128'],
+  'rc4'       : ['rc4-hmac'],
+  'camellia'  : ['camellia256-cts-cmac', 'camellia128-cts-cmac'],
+  'des3'      : ['des3-cbc-sha1'],
+  'des'       : ['des-cbc-crc', 'des-cbc-md5', 'des-cbc-md4']
+}
+
+def resolve_encryption_family_list(enc_types_list):
+  result = []
+  for each in enc_types_list:
+    result.extend(ENCRYPTION_FAMILY_MAP[each] if each in ENCRYPTION_FAMILY_MAP else [each])
+  return set(result)
+
+def resolve_encryption_families(enc_types_str):
+  return None if enc_types_str is None \
+    else ' '.join(resolve_encryption_family_list(enc_types_str.split()))

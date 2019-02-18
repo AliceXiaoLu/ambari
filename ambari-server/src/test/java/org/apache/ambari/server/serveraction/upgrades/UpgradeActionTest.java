@@ -21,7 +21,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.lang.reflect.Field;
+import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -61,6 +64,8 @@ import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.orm.entities.UpgradeEntity;
 import org.apache.ambari.server.orm.entities.UpgradeHistoryEntity;
 import org.apache.ambari.server.serveraction.ServerAction;
+import org.apache.ambari.server.stack.upgrade.Direction;
+import org.apache.ambari.server.stack.upgrade.UpgradePack;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
@@ -76,9 +81,10 @@ import org.apache.ambari.server.state.ServiceFactory;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.State;
 import org.apache.ambari.server.state.UpgradeState;
-import org.apache.ambari.server.state.stack.UpgradePack;
-import org.apache.ambari.server.state.stack.upgrade.UpgradeType;
 import org.apache.ambari.server.utils.EventBusSynchronizer;
+import org.apache.ambari.spi.RepositoryType;
+import org.apache.ambari.spi.upgrade.UpgradeType;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.junit.After;
 import org.junit.Assert;
@@ -139,6 +145,9 @@ public class UpgradeActionTest {
   private FinalizeUpgradeAction finalizeUpgradeAction;
   @Inject
   private ConfigFactory configFactory;
+
+  @Inject
+  private RepositoryVersionDAO repositoryVersionDAO;
 
   @Inject
   private HostComponentStateDAO hostComponentStateDAO;
@@ -583,6 +592,105 @@ public class UpgradeActionTest {
     }
   }
 
+  /**
+   * Tests the case where a revert happens on a patch upgrade and a new service
+   * has been added which causes the repository to go OUT_OF_SYNC.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testHostVersionsOutOfSyncAfterRevert() throws Exception {
+    String hostName = "h1";
+    Cluster cluster = createUpgradeCluster(repositoryVersion2110, hostName);
+    createHostVersions(repositoryVersion2111, hostName);
+
+    // Install ZK with some components (HBase is installed later to test the
+    // logic of revert)
+    Service zk = installService(cluster, "ZOOKEEPER", repositoryVersion2110);
+    addServiceComponent(cluster, zk, "ZOOKEEPER_SERVER");
+    addServiceComponent(cluster, zk, "ZOOKEEPER_CLIENT");
+    createNewServiceComponentHost(cluster, "ZOOKEEPER", "ZOOKEEPER_SERVER", hostName);
+    createNewServiceComponentHost(cluster, "ZOOKEEPER", "ZOOKEEPER_CLIENT", hostName);
+
+    List<HostVersionEntity> hostVersions = hostVersionDAO.findAll();
+    assertEquals(2, hostVersions.size());
+
+    // repo 2110 - CURRENT
+    // repo 2111 - CURRENT (PATCH)
+    for (HostVersionEntity hostVersion : hostVersions) {
+      hostVersion.setState(RepositoryVersionState.CURRENT);
+
+      hostVersionDAO.merge(hostVersion);
+    }
+
+    // convert the repository into a PATCH repo (which should have ZK and HBase
+    // as available services)
+    repositoryVersion2111.setParent(repositoryVersion2110);
+    repositoryVersion2111.setType(RepositoryType.PATCH);
+    repositoryVersion2111.setVersionXml(hostName);
+    repositoryVersion2111.setVersionXsd("version_definition.xsd");
+
+    File patchVdfFile = new File("src/test/resources/hbase_version_test.xml");
+    repositoryVersion2111.setVersionXml(
+        IOUtils.toString(new FileInputStream(patchVdfFile), Charset.defaultCharset()));
+
+    repositoryVersion2111 = repositoryVersionDAO.merge(repositoryVersion2111);
+
+    // pretend like we patched
+    UpgradeEntity upgrade = createUpgrade(cluster, repositoryVersion2111);
+    upgrade.setOrchestration(RepositoryType.PATCH);
+    upgrade.setRevertAllowed(true);
+    upgrade = upgradeDAO.merge(upgrade);
+
+    // add a service on the parent repo to cause the OUT_OF_SYNC on revert
+    Service hbase = installService(cluster, "HBASE", repositoryVersion2110);
+    addServiceComponent(cluster, hbase, "HBASE_MASTER");
+    createNewServiceComponentHost(cluster, "HBASE", "HBASE_MASTER", hostName);
+
+    // revert the patch
+    UpgradeEntity revert = createRevert(cluster, upgrade);
+    assertEquals(RepositoryType.PATCH, revert.getOrchestration());
+
+    // push all services to the revert repo version for finalize
+    Map<String, Service> services = cluster.getServices();
+    assertTrue(services.size() > 0);
+    for (Service service : services.values()) {
+      service.setDesiredRepositoryVersion(repositoryVersion2110);
+    }
+
+    // push all components to the revert version
+    List<HostComponentStateEntity> hostComponentStates = hostComponentStateDAO.findByHost(hostName);
+    for (HostComponentStateEntity hostComponentState : hostComponentStates) {
+      hostComponentState.setVersion(repositoryVersion2110.getVersion());
+      hostComponentStateDAO.merge(hostComponentState);
+    }
+
+    Map<String, String> commandParams = new HashMap<>();
+    ExecutionCommand executionCommand = new ExecutionCommand();
+    executionCommand.setCommandParams(commandParams);
+    executionCommand.setClusterName(clusterName);
+
+    HostRoleCommand hostRoleCommand = hostRoleCommandFactory.create(null, null, null, null);
+    hostRoleCommand.setExecutionCommandWrapper(new ExecutionCommandWrapper(executionCommand));
+
+    finalizeUpgradeAction.setExecutionCommand(executionCommand);
+    finalizeUpgradeAction.setHostRoleCommand(hostRoleCommand);
+
+    // finalize
+    CommandReport report = finalizeUpgradeAction.execute(null);
+    assertNotNull(report);
+    assertEquals(HostRoleStatus.COMPLETED.name(), report.getStatus());
+
+    for (HostVersionEntity hostVersion : hostVersions) {
+      RepositoryVersionEntity hostRepoVersion = hostVersion.getRepositoryVersion();
+      if (repositoryVersion2110.equals(hostRepoVersion)) {
+        assertEquals(RepositoryVersionState.CURRENT, hostVersion.getState());
+      } else {
+        assertEquals(RepositoryVersionState.OUT_OF_SYNC, hostVersion.getState());
+      }
+    }
+  }
+
   private ServiceComponentHost createNewServiceComponentHost(Cluster cluster, String svc,
                                                              String svcComponent, String hostName) throws AmbariException {
     Assert.assertNotNull(cluster.getConfigGroups());
@@ -670,6 +778,7 @@ public class UpgradeActionTest {
     upgradeEntity.setClusterId(cluster.getClusterId());
     upgradeEntity.setRequestEntity(requestEntity);
     upgradeEntity.setUpgradePackage("");
+    upgradeEntity.setUpgradePackStackId(new StackId((String) null));
     upgradeEntity.setRepositoryVersion(repositoryVersion);
     upgradeEntity.setUpgradeType(UpgradeType.NON_ROLLING);
 
@@ -692,4 +801,47 @@ public class UpgradeActionTest {
     cluster.setUpgradeEntity(upgradeEntity);
     return upgradeEntity;
   }
+
+  /**
+   * Creates a revert based on an existing upgrade.
+   */
+  private UpgradeEntity createRevert(Cluster cluster, UpgradeEntity upgradeToRevert)
+      throws Exception {
+
+    // create some entities for the finalize action to work with for patch
+    // history
+    RequestEntity requestEntity = new RequestEntity();
+    requestEntity.setClusterId(cluster.getClusterId());
+    requestEntity.setRequestId(2L);
+    requestEntity.setStartTime(System.currentTimeMillis());
+    requestEntity.setCreateTime(System.currentTimeMillis());
+    requestDAO.create(requestEntity);
+
+    UpgradeEntity revert = new UpgradeEntity();
+    revert.setId(2L);
+    revert.setDirection(Direction.DOWNGRADE);
+    revert.setClusterId(cluster.getClusterId());
+    revert.setRequestEntity(requestEntity);
+    revert.setUpgradePackage("");
+    revert.setUpgradePackStackId(new StackId((String) null));
+    revert.setRepositoryVersion(upgradeToRevert.getRepositoryVersion());
+    revert.setUpgradeType(upgradeToRevert.getUpgradeType());
+    revert.setOrchestration(upgradeToRevert.getOrchestration());
+
+
+    for (UpgradeHistoryEntity historyToRevert : upgradeToRevert.getHistory()) {
+      UpgradeHistoryEntity history = new UpgradeHistoryEntity();
+      history.setUpgrade(revert);
+      history.setServiceName(historyToRevert.getServiceName());
+      history.setComponentName(historyToRevert.getComponentName());
+      history.setFromRepositoryVersion(upgradeToRevert.getRepositoryVersion());
+      history.setTargetRepositoryVersion(historyToRevert.getFromReposistoryVersion());
+      revert.addHistory(history);
+
+    }
+    upgradeDAO.create(revert);
+    cluster.setUpgradeEntity(revert);
+    return revert;
+  }
+
 }

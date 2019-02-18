@@ -47,16 +47,14 @@ import javax.persistence.UniqueConstraint;
 import org.apache.ambari.annotations.Experimental;
 import org.apache.ambari.annotations.ExperimentalFeature;
 import org.apache.ambari.server.StaticallyInject;
-import org.apache.ambari.server.state.RepositoryType;
 import org.apache.ambari.server.state.StackId;
-import org.apache.ambari.server.state.repository.Release;
 import org.apache.ambari.server.state.repository.VersionDefinitionXml;
-import org.apache.ambari.server.state.stack.upgrade.RepositoryVersionHelper;
+import org.apache.ambari.spi.RepositoryType;
+import org.apache.ambari.spi.RepositoryVersion;
 import org.apache.commons.lang.StringUtils;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
-import com.google.inject.Inject;
-import com.google.inject.Provider;
 
 @Entity
 @Table(name = "repo_version", uniqueConstraints = {
@@ -93,9 +91,6 @@ import com.google.inject.Provider;
         query = "SELECT repositoryVersion FROM RepositoryVersionEntity repositoryVersion WHERE repositoryVersion IN (SELECT DISTINCT sd1.desiredRepositoryVersion FROM ServiceDesiredStateEntity sd1 WHERE sd1.desiredRepositoryVersion IN ?1)") })
 @StaticallyInject
 public class RepositoryVersionEntity {
-  @Inject
-  private static Provider<RepositoryVersionHelper> repositoryVersionHelperProvider;
-
   @Id
   @Column(name = "repo_version_id")
   @GeneratedValue(strategy = GenerationType.TABLE, generator = "repository_version_id_generator")
@@ -253,18 +248,6 @@ public class RepositoryVersionEntity {
     this.displayName = displayName;
   }
 
-  /**
-   * @param stackId the stack id for the version
-   * @param release the XML release instance
-   */
-  public void setDisplayName(StackId stackId, Release release) {
-    if (StringUtils.isNotBlank(release.display)) {
-      displayName = release.display;
-    } else {
-      displayName = stackId.getStackName() + "-" + release.getFullVersion();
-    }
-  }
-
 
   public String getStackName() {
     return getStackId().getStackName();
@@ -392,7 +375,7 @@ public class RepositoryVersionEntity {
    */
   @Override
   public String toString() {
-    return Objects.toStringHelper(this).add("id", id).add("stack", stack).add("version",
+    return MoreObjects.toStringHelper(this).add("id", id).add("stack", stack).add("version",
         version).add("type", type).add("hidden", isHidden == 1).toString();
   }
 
@@ -412,7 +395,7 @@ public class RepositoryVersionEntity {
       String leading = stackId.getStackVersion();  // E.g, 2.3
       // In some cases during unit tests, the leading can contain 3 digits, so only the major number (first two parts) are needed.
       String[] leadingParts = leading.split("\\.");
-      if (null != leadingParts && leadingParts.length > 2) {
+      if (leadingParts.length > 2) {
         leading = leadingParts[0] + "." + leadingParts[1];
       }
       return version.startsWith(leading);
@@ -515,5 +498,15 @@ public class RepositoryVersionEntity {
     for (RepoOsEntity repoOsEntity : repoOsEntities) {
       repoOsEntity.setRepositoryVersionEntity(this);
     }
+  }
+
+  /**
+   * Builds a {@link RepositoryVersion} instance type from this entity.
+   *
+   * @return a single POJO to represent this entity.
+   */
+  public RepositoryVersion getRepositoryVersion() {
+    return new RepositoryVersion(getId(), getStackName(), getStackVersion(),
+        getStackId().getStackId(), getVersion(), getType());
   }
 }

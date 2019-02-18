@@ -48,7 +48,7 @@ stack_root = Script.get_stack_root()
 
 architecture = get_architecture()
 
-dfs_type = default("/commandParams/dfs_type", "")
+dfs_type = default("/clusterLevelParams/dfs_type", "")
 
 artifact_dir = format("{tmp_dir}/AMBARI-artifacts/")
 jdk_name = default("/ambariLevelParams/jdk_name", None)
@@ -111,6 +111,13 @@ hdfs_user_nofile_limit = default("/configurations/hadoop-env/hdfs_user_nofile_li
 hadoop_home = stack_select.get_hadoop_dir("home")
 hadoop_libexec_dir = stack_select.get_hadoop_dir("libexec")
 hadoop_lib_home = stack_select.get_hadoop_dir("lib")
+
+ozone_manager_hosts = default("/clusterHostInfo/ozone_manager_hosts", [])
+has_ozone = not len(ozone_manager_hosts) == 0
+if version:
+  hadoop_ozone_home = os.path.join(stack_root, version, "hadoop-ozone")
+else:
+  hadoop_ozone_home = os.path.join(stack_root, "current", "hadoop-ozone")
 
 hadoop_dir = "/etc/hadoop"
 hadoop_java_io_tmpdir = os.path.join(tmp_dir, "hadoop_java_io_tmpdir")

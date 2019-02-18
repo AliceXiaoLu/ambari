@@ -48,6 +48,7 @@ import org.apache.ambari.server.H2DatabaseCleaner;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.checks.DatabaseConsistencyCheckHelper;
 import org.apache.ambari.server.configuration.Configuration;
+import org.apache.ambari.server.mpack.MpackManagerFactory;
 import org.apache.ambari.server.orm.DBAccessor;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
@@ -349,9 +350,10 @@ public class AmbariServerTest {
     return Guice.createInjector(new AbstractModule() {
       @Override
       protected void configure() {
-        PartialNiceMockBinder.newBuilder().addClustersBinding().build().configure(binder());
+        PartialNiceMockBinder.newBuilder().addClustersBinding().addLdapBindings().build().configure(binder());
 
         bind(StackManagerFactory.class).toInstance(createNiceMock(StackManagerFactory.class));
+        bind(MpackManagerFactory.class).toInstance(createNiceMock(MpackManagerFactory.class));
         bind(AmbariMetaInfo.class).toInstance(mockAmbariMetainfo);
         bind(DBAccessor.class).toInstance(mockDBDbAccessor);
         bind(OsFamily.class).toInstance(mockOSFamily);

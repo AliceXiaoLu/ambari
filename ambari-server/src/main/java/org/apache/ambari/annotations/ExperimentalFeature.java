@@ -42,5 +42,16 @@ public enum ExperimentalFeature {
   /**
    * Support for service-specific repos for custom services
    */
-  CUSTOM_SERVICE_REPOS
+  CUSTOM_SERVICE_REPOS,
+
+  /**
+   * Automatically removing Kerberos identities when a service or component is
+   * removed.
+   */
+  ORPHAN_KERBEROS_IDENTITY_REMOVAL,
+
+  /**
+   * Member should be refactored to SPI project
+   */
+  REFACTOR_TO_SPI;
 }

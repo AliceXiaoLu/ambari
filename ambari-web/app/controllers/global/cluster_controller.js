@@ -65,6 +65,8 @@ App.ClusterController = Em.Controller.extend(App.ReloadPopupMixin, {
 
   isServiceContentFullyLoaded: Em.computed.and('isServiceMetricsLoaded', 'isComponentsStateLoaded', 'isComponentsConfigLoaded'),
 
+  isStackVersionsLoaded: false,
+
   clusterName: Em.computed.alias('App.clusterName'),
 
   updateLoadStatus: function (item) {
@@ -100,7 +102,7 @@ App.ClusterController = Em.Controller.extend(App.ReloadPopupMixin, {
   loadClusterName: function (reload, deferred) {
     var dfd = deferred || $.Deferred();
 
-    if (App.get('clusterName') && !reload) {
+    if (App.get('clusterName') && App.get('clusterId') && !reload) {
       App.set('clusterName', this.get('clusterName'));
       this.set('isClusterNameLoaded', true);
       dfd.resolve();
@@ -355,6 +357,7 @@ App.ClusterController = Em.Controller.extend(App.ReloadPopupMixin, {
         upgradeController.loadCompatibleVersions();
         upgradeController.updateCurrentStackVersion();
         App.set('stackVersionsAvailable', App.StackVersion.find().content.length > 0);
+        self.set('isStackVersionsLoaded', true);
       });
     });
   },
@@ -373,13 +376,6 @@ App.ClusterController = Em.Controller.extend(App.ReloadPopupMixin, {
    * */
   isSuspendedState: function(status){
     return "ABORTED" === status;
-  },
-
-  loadRootService: function () {
-    return App.ajax.send({
-      name: 'service.ambari',
-      sender: this
-    });
   },
 
   requestHosts: function (realUrl, callback) {

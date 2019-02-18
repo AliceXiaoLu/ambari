@@ -28,7 +28,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.apache.ambari</groupId>
-    <version>2.6.2</version>
+    <version>2.7.3</version>
     <artifactId>ambari</artifactId>
     <packaging>pom</packaging>
 
@@ -617,7 +617,7 @@
             <email>jluniya@apache.org</email>
             <timezone>-8</timezone>
             <roles>
-                <role>PMC</role>
+                <role>PMC Chair</role>
             </roles>
             <organization>
                 Hortonworks
@@ -654,6 +654,17 @@
             <timezone>-8</timezone>
             <roles>
                 <role>PMC</role>
+            </roles>
+            <organization>
+            </organization>
+        </developer>
+        <developer>
+            <id>krisztiankasa</id>
+            <name>Krisztian Kasa</name>
+            <email>krisztiankasa@apache.org</email>
+            <timezone></timezone>
+            <roles>
+                <role>Committer</role>
             </roles>
             <organization>
             </organization>
@@ -844,7 +855,7 @@
             <email>oleewere@apache.org</email>
             <timezone>+2</timezone>
             <roles>
-                <role>Committer</role>
+                <role>PMC</role>
             </roles>
             <organization>
                 Hortonworks
@@ -1087,7 +1098,6 @@
                 <role>Committer</role>
             </roles>
             <organization>
-                Hortonworks
             </organization>
         </developer>
         <developer>
@@ -1170,6 +1180,18 @@
             </roles>
             <organization>
                IBM
+            </organization>
+        </developer>
+        <developer>
+            <id>tobiasistvan</id>
+            <name>Istvan Tobias</name>
+            <email>tobiasistvan@apache.org</email>
+            <timezone></timezone>
+            <roles>
+                <role>Committer</role>
+            </roles>
+            <organization>
+                Hortonworks
             </organization>
         </developer>
         <developer>
@@ -1273,7 +1295,7 @@
             <email>yusaku@apache.org</email>
             <timezone>-8</timezone>
             <roles>
-                <role>PMC Chair</role>
+                <role>PMC</role>
             </roles>
             <organization>
                 Hortonworks
@@ -1293,7 +1315,51 @@
       </developers>
       <contributors>
         <contributor>
+          <name>Dhanya Balasundaran</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Shreya Bhat</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Anusha Bilgi</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Jasmeen Kaur</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Kishor Ramakrishnan</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Pradarttana Panda</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Srikanth Janardhan</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Vivek Rathod</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Supreeth Sharma</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Vivek Sharma</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
           <name>Sanket Shah</name>
+          <organization>Hortonworks</organization>
+        </contributor>
+        <contributor>
+          <name>Yesha Vora</name>
           <organization>Hortonworks</organization>
         </contributor>
         <contributor>

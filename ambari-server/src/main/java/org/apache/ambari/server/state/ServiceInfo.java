@@ -41,6 +41,7 @@ import javax.xml.bind.annotation.XmlEnumValue;
 import javax.xml.bind.annotation.XmlTransient;
 
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
+import org.apache.ambari.server.collections.PredicateUtils;
 import org.apache.ambari.server.stack.StackDirectory;
 import org.apache.ambari.server.stack.Validable;
 import org.apache.ambari.server.state.stack.MetricDefinition;
@@ -76,6 +77,7 @@ public class ServiceInfo implements Validable {
   private String comment;
   private String serviceType;
   private Selection selection;
+  private String maintainer;
 
   /**
    * Default to Python if not specified.
@@ -152,10 +154,24 @@ public class ServiceInfo implements Validable {
   private CredentialStoreInfo credentialStoreInfo;
 
   /**
+   * The configuration that can be used to determine if Kerberos has been enabled for this service.
+   * <p>
+   * It is expected that this value is in the form of a valid JSON predicate ({@link PredicateUtils#fromJSON(String)}
+   */
+  @XmlElement(name = "kerberosEnabledTest")
+  private String kerberosEnabledTest = null;
+
+  /**
    * Single Sign-on support information
    */
   @XmlElements(@XmlElement(name = "sso"))
   private SingleSignOnInfo singleSignOnInfo;
+
+  /**
+   * LDAP support information
+   */
+  @XmlElements(@XmlElement(name = "ldap"))
+  private ServiceLdapInfo ldapInfo;
 
   public Boolean isRestartRequiredAfterChange() {
     return restartRequiredAfterChange;
@@ -229,7 +245,7 @@ public class ServiceInfo implements Validable {
 
   @Override
   public void addErrors(Collection<String> errors) {
-    this.errorSet.addAll(errors);
+    errorSet.addAll(errors);
   }
 
   /**
@@ -319,6 +335,12 @@ public class ServiceInfo implements Validable {
   @XmlTransient
   private File serverActionsFolder;
 
+  /**
+   * Used to determine if rolling restart is supported
+   * */
+  @XmlElement(name = "rollingRestartSupported")
+  private boolean rollingRestartSupported;
+
   public boolean isDeleted() {
     return isDeleted;
   }
@@ -341,11 +363,11 @@ public class ServiceInfo implements Validable {
     }
     // If set to null and has a parent, then the value would have already been resolved and set.
     // Otherwise, return the default value (true).
-    return this.supportDeleteViaUIInternal;
+    return supportDeleteViaUIInternal;
   }
 
   public void setSupportDeleteViaUI(boolean supportDeleteViaUI) {
-    this.supportDeleteViaUIInternal = supportDeleteViaUI;
+    supportDeleteViaUIInternal = supportDeleteViaUI;
   }
 
   public String getName() {
@@ -373,7 +395,7 @@ public class ServiceInfo implements Validable {
   }
 
   public void setServiceAdvisorType(ServiceAdvisorType type) {
-    this.serviceAdvisorType = type;
+    serviceAdvisorType = type;
   }
 
   public ServiceAdvisorType getServiceAdvisorType() {
@@ -417,6 +439,18 @@ public class ServiceInfo implements Validable {
     return selection == null;
   }
 
+  public String getMaintainer() {
+    return maintainer;
+  }
+
+  public void setMaintainer(String maintainer) {
+    this.maintainer = maintainer;
+  }
+
+  public boolean isMaintainerEmpty() {
+    return maintainer == null;
+  }
+
   public String getComment() {
     return comment;
   }
@@ -456,7 +490,7 @@ public class ServiceInfo implements Validable {
     return properties;
   }
 
-  public void setProperties(List properties) {
+  public void setProperties(List<PropertyInfo> properties) {
     this.properties = properties;
   }
 
@@ -627,6 +661,27 @@ public class ServiceInfo implements Validable {
   }
 
   /**
+   * Gets the JSON predicate ({@link PredicateUtils#fromJSON(String)} that can be used to determine
+   * if Kerberos has been enabled for this service or not.
+   *
+   * @return a valid JSON predicate ({@link PredicateUtils#fromJSON(String)}
+   */
+  public String getKerberosEnabledTest() {
+    return kerberosEnabledTest;
+  }
+
+  /**
+   * Sets the JSON predicate ({@link PredicateUtils#fromJSON(String)} that can be used to determine
+   * if Kerberos has been enabled for this service or not.
+   *
+   * @param kerberosEnabledTest a valid JSON predicate ({@link PredicateUtils#fromJSON(String)}
+   */
+  public void setKerberosEnabledTest(String kerberosEnabledTest) {
+    this.kerberosEnabledTest = kerberosEnabledTest;
+  }
+
+
+  /**
    * Gets the value for the SSO integration support
    *
    * @return the {@link SingleSignOnInfo}
@@ -653,8 +708,55 @@ public class ServiceInfo implements Validable {
     return (singleSignOnInfo != null) && singleSignOnInfo.isSupported();
   }
 
+  /**
+   * @deprecated Use {@link #getSingleSignOnEnabledTest()} instead
+   */
+  @Deprecated
   public String getSingleSignOnEnabledConfiguration() {
     return singleSignOnInfo != null ? singleSignOnInfo.getEnabledConfiguration() : null;
+  }
+
+  public String getSingleSignOnEnabledTest() {
+    return singleSignOnInfo != null ? singleSignOnInfo.getSsoEnabledTest() : null;
+  }
+
+  /**
+   * @return the boolean flag is Kerberos is required for SSO integration
+   */
+  public boolean isKerberosRequiredForSingleSignOnIntegration() {
+    return singleSignOnInfo != null && singleSignOnInfo.isKerberosRequired();
+  }
+
+  /**
+   * Gets a new value for LDAP integration support
+   */
+  public ServiceLdapInfo getLdapInfo() {
+    return ldapInfo;
+  }
+
+  /**
+   * Sets a new value for LDAP integration support
+   *
+   * @param ldapInfo
+   *          a {@link ServiceLdapInfo}
+   */
+  public void setLdapInfo(ServiceLdapInfo ldapInfo) {
+    this.ldapInfo = ldapInfo;
+  }
+
+  /**
+   * @return whether this service supports single sign-on integration
+   */
+  public boolean isLdapSupported() {
+    return (ldapInfo != null) && ldapInfo.isSupported();
+  }
+
+  /**
+   * @return the configuration specification that can be used to determine if LDAP
+   *         has been enabled or not.
+   */
+  public String getLdapEnabledTest() {
+    return ldapInfo != null ? ldapInfo.getLdapEnabledTest() : null;
   }
 
   @Override
@@ -666,6 +768,8 @@ public class ServiceInfo implements Validable {
     sb.append(serviceType);
     sb.append("\nversion:");
     sb.append(version);
+    sb.append("\nKerberos enabled test:");
+    sb.append(kerberosEnabledTest);
     sb.append("\ncomment:");
     sb.append(comment);
 
@@ -709,7 +813,7 @@ public class ServiceInfo implements Validable {
    * @param typeAttributes attributes associated with the type
    */
   public synchronized void setTypeAttributes(String type, Map<String, Map<String, String>> typeAttributes) {
-    if (this.configTypes == null) {
+    if (configTypes == null) {
       configTypes = new HashMap<>();
     }
     configTypes.put(type, typeAttributes);
@@ -991,6 +1095,14 @@ public class ServiceInfo implements Validable {
     return kerberosDescriptorFile;
   }
 
+  public boolean isRollingRestartSupported() {
+    return rollingRestartSupported;
+  }
+
+  public void setRollingRestartSupported(boolean rollingRestartSupported) {
+    this.rollingRestartSupported = rollingRestartSupported;
+  }
+
   /**
    * @return the widgets descriptor file, or <code>null</code> if none exists
    */
@@ -1253,12 +1365,38 @@ public class ServiceInfo implements Validable {
     // validate single sign-in support information
     if (singleSignOnInfo != null) {
       if (singleSignOnInfo.isSupported()) {
-        if (StringUtils.isEmpty(singleSignOnInfo.getEnabledConfiguration())) {
+        if (StringUtils.isEmpty(singleSignOnInfo.getSsoEnabledTest()) && StringUtils.isEmpty(singleSignOnInfo.getEnabledConfiguration())) {
           setValid(false);
-          addError("Single Sign-on support is indicated for service " + getName() + " but no test configuration has been set (enabledConfiguration).");
+          addError("Single Sign-on support is indicated for service " + getName() + " but no test configuration has been set (enabledConfiguration or ssoEnabledTest).");
         }
       }
     }
+
+    if (ldapInfo != null && ldapInfo.isSupported() && StringUtils.isBlank(ldapInfo.getLdapEnabledTest())) {
+      setValid(false);
+      addError("LDAP support is indicated for service " + getName() + " but no test configuration has been set by ldapEnabledTest.");
+    }
+  }
+
+  /**
+   * Gets whether this service advertises a version based on whether at least
+   * one of its components advertises a version.
+   *
+   * @return {@code true} if at least 1 component of this service advertises a
+   *         version, {@code false} otherwise.
+   */
+  public boolean isVersionAdvertised() {
+    if (null == components) {
+      return false;
+    }
+
+    for (ComponentInfo componentInfo : components) {
+      if (componentInfo.isVersionAdvertised()) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   public enum Selection {

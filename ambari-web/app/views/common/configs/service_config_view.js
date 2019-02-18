@@ -128,11 +128,9 @@ App.ServiceConfigView = Em.View.extend({
       secondary: Em.I18n.t('common.cancel'),
       onSave: function () {
         const newVersionToBeCreated = Math.max.apply(null, App.ServiceConfigVersion.find().mapProperty('version')) + 1;
-        const isDefault = controller.get('selectedConfigGroup.name') === App.ServiceConfigGroup.defaultGroupName;
         controller.setProperties({
           saveConfigsFlag: true,
           serviceConfigVersionNote: this.get('serviceConfigNote'),
-          currentDefaultVersion: isDefault ? newVersionToBeCreated : controller.get('currentDefaultVersion'),
           preSelectedConfigVersion: Em.Object.create({
             version: newVersionToBeCreated,
             serviceName: controller.get('content.serviceName'),
@@ -252,7 +250,6 @@ App.ServiceConfigView = Em.View.extend({
     if (advancedTab) {
       advancedTab.set('isRendered', advancedTab.get('isActive'));
     }
-    this.processTabs(tabs);
     return tabs;
   }.property('controller.selectedService.serviceName'),
 
@@ -288,41 +285,6 @@ App.ServiceConfigView = Em.View.extend({
           firstHotHiddenTab.set('isRendered', true);
         }
       }
-    }
-  },
-
-  /**
-   * Data reordering before rendering.
-   * Reorder all sections/subsections into rows based on their rowIndex
-   * @param tabs
-   */
-  processTabs: function (tabs) {
-    for (var i = 0; i < tabs.length; i++) {
-      var tab = tabs[i];
-
-      // process sections
-      var sectionRows = [];
-      var sections = tab.get('sections');
-      for (var j = 0; j < sections.get('length'); j++) {
-        var section = sections.objectAt(j);
-        var sectionRow = sectionRows[section.get('rowIndex')];
-        if (!sectionRow) { sectionRow = sectionRows[section.get('rowIndex')] = []; }
-        sectionRow.push(section);
-
-        //process subsections
-        var subsections = section.get('subSections');
-        var subsectionRows = [];
-        for (var k = 0; k < subsections.get('length'); k++) {
-          var subsection = subsections.objectAt(k);
-          var subsectionRow = subsectionRows[subsection.get('rowIndex')];
-          if (!subsectionRow) { subsectionRow = subsectionRows[subsection.get('rowIndex')] = []; }
-          subsectionRow.push(subsection);
-          // leave a title gap if one of the subsection on the same row within the same section has title
-          if (subsection.get('displayName')) {subsectionRow.hasTitleGap = true;}
-        }
-        section.set('subsectionRows', subsectionRows);
-      }
-      tab.set('sectionRows', sectionRows);
     }
   },
 

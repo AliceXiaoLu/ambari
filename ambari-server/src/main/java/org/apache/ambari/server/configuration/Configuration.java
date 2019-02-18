@@ -68,6 +68,8 @@ import org.apache.ambari.server.security.encryption.CredentialProvider;
 import org.apache.ambari.server.state.services.MetricsRetrievalService;
 import org.apache.ambari.server.state.services.RetryUpgradeActionService;
 import org.apache.ambari.server.state.stack.OsFamily;
+import org.apache.ambari.server.topology.addservice.GroupByComponentsStrategy;
+import org.apache.ambari.server.topology.addservice.HostGroupStrategy;
 import org.apache.ambari.server.upgrade.AbstractUpgradeCatalog;
 import org.apache.ambari.server.utils.AmbariPath;
 import org.apache.ambari.server.utils.DateUtils;
@@ -467,6 +469,13 @@ public class Configuration {
       "api.csrfPrevention.enabled", "true");
 
   /**
+   * Determines whether Gzip handler is enabled for Jetty.
+   */
+  @Markdown(description = "Determines whether jetty Gzip compression is enabled or not.")
+  public static final ConfigurationProperty<String> GZIP_HANDLER_JETTY_ENABLED = new ConfigurationProperty<>(
+    "gzip.handler.jetty.enabled", "true");
+
+  /**
    * Determines whether HTTP body data is compressed with GZIP.
    */
   @Markdown(description = "Determines whether data sent to and from the Ambari service should be compressed.")
@@ -542,6 +551,13 @@ public class Configuration {
   @Markdown(description = "The name of the file located in the `security.server.keys_dir` directory where certificates will be generated when Ambari uses the `openssl ca` command.")
   public static final ConfigurationProperty<String> SRVR_CRT_NAME = new ConfigurationProperty<>(
       "security.server.cert_name", "ca.crt");
+
+  /**
+   * The name of the file that contains the CA certificate chain for certificate validation during 2-way SSL communication.
+   */
+  @Markdown(description = "The name of the file located in the `security.server.keys_dir` directory containing the CA certificate chain used to verify certificates during 2-way SSL communications.")
+  public static final ConfigurationProperty<String> SRVR_CRT_CHAIN_NAME = new ConfigurationProperty<>(
+      "security.server.cert_chain_name", "ca_chain.pem");
 
   /**
    * The name of the certificate request file used when generating certificates.
@@ -700,6 +716,15 @@ public class Configuration {
       examples = { "/var/lib/ambari-server/resources/mpacks" })
   public static final ConfigurationProperty<String> MPACKS_STAGING_DIR_PATH = new ConfigurationProperty<>(
       "mpacks.staging.path", null);
+
+  /**
+   * The Ambari Management Pack v2 staging directory on the Ambari Server.
+   */
+  @Markdown(
+          description = "The Ambari Management Pack version-2 staging directory on the Ambari Server.",
+          examples = { "/var/lib/ambari-server/resources/mpacks-v2" })
+  public static final ConfigurationProperty<String> MPACKS_V2_STAGING_DIR_PATH = new ConfigurationProperty<>(
+          "mpacks-v2.staging.path", null);
 
   /**
    * The full path to the file which contains the Ambari Server version.
@@ -1855,11 +1880,32 @@ public class Configuration {
       "api.heartbeat.interval", 10000);
 
   /**
-   * The maximum size of a stomp text message. Default is 2 MB.
+   * The maximum size of an incoming stomp text message. Default is 2 MB.
    */
-  @Markdown(description = "The maximum size of a stomp text message. Default is 2 MB.")
-  public static final ConfigurationProperty<Integer> STOMP_MAX_MESSAGE_SIZE = new ConfigurationProperty<>(
-      "stomp.max.message.size", 2*1024*1024);
+  @Markdown(description = "The maximum size of an incoming stomp text message. Default is 2 MB.")
+  public static final ConfigurationProperty<Integer> STOMP_MAX_INCOMING_MESSAGE_SIZE = new ConfigurationProperty<>(
+      "stomp.max_incoming.message.size", 2*1024*1024);
+
+  /**
+   * The maximum size of a buffer for stomp message sending. Default is 5 MB.
+   */
+  @Markdown(description = "The maximum size of a buffer for stomp message sending. Default is 5 MB.")
+  public static final ConfigurationProperty<Integer> STOMP_MAX_BUFFER_MESSAGE_SIZE = new ConfigurationProperty<>(
+      "stomp.max_buffer.message.size", 5*1024*1024);
+
+  /**
+   * The number of attempts to emit execution command message to agent. Default is 4
+   */
+  @Markdown(description = "The number of attempts to emit execution command message to agent. Default is 4")
+  public static final ConfigurationProperty<Integer> EXECUTION_COMMANDS_RETRY_COUNT = new ConfigurationProperty<>(
+      "execution.command.retry.count", 4);
+
+  /**
+   * The interval in seconds between attempts to emit execution command message to agent. Default is 15
+   */
+  @Markdown(description = "The interval in seconds between attempts to emit execution command message to agent. Default is 15")
+  public static final ConfigurationProperty<Integer> EXECUTION_COMMANDS_RETRY_INTERVAL = new ConfigurationProperty<>(
+      "execution.command.retry.interval", 15);
 
   /**
    * The maximum number of threads used to extract Ambari Views when Ambari
@@ -2234,6 +2280,15 @@ public class Configuration {
       "views.http.cache-control", "no-store");
 
   /**
+   * The value that is additional classpath for the views. It will take comma separated paths. If the individual path is jar
+   * it will be included otherwise if it is a directory then all the files inside it will be included in the classpath. Directories
+   * WILL NOT BE traversed recursively
+   */
+  @Markdown(description = "Additional class path added to each Ambari View. Comma separated jars or directories")
+  public static final ConfigurationProperty<String> VIEWS_ADDITIONAL_CLASSPATH_VALUE = new ConfigurationProperty<>(
+      "views.additional.classpath", "");
+
+  /**
    * The value that will be used to set the {@code PRAGMA} HTTP response header.
    * HTTP response header for Ambari View requests.
    */
@@ -2519,6 +2574,9 @@ public class Configuration {
   @Markdown(description = "Whether security password encryption is enabled or not. In case it is we store passwords in their own file(s); otherwise we store passwords in the Ambari credential store.")
   public static final ConfigurationProperty<Boolean> SECURITY_PASSWORD_ENCRYPTON_ENABLED = new ConfigurationProperty<>("security.passwords.encryption.enabled", false);
 
+  @Markdown(description="Whether to encrypt sensitive data (at rest) on service level configuration.")
+  public static final ConfigurationProperty<Boolean> SECURITY_SENSITIVE_DATA_ENCRYPTON_ENABLED = new ConfigurationProperty<>("security.server.encrypt_sensitive_data", false);
+
   /**
    * The maximum number of authentication attempts permitted to a local user. Once the number of failures reaches this limit the user will be locked out. 0 indicates unlimited failures
    */
@@ -2546,6 +2604,20 @@ public class Configuration {
   @Markdown(description = "Default value of max number of tasks to schedule in parallel for upgrades. Upgrade packs can override this value.")
   public static final ConfigurationProperty<Integer> DEFAULT_MAX_DEGREE_OF_PARALLELISM_FOR_UPGRADES = new ConfigurationProperty<>(
     "stack.upgrade.default.parallelism", 100);
+
+  /**
+   * Fully qualified class name of the strategy used to form host groups for add service request layout recommendation.
+   */
+  @Markdown(description = "Fully qualified class name of the strategy used to form host groups for add service request layout recommendation.")
+  public static final ConfigurationProperty<String> ADD_SERVICE_HOST_GROUP_STRATEGY = new ConfigurationProperty<>(
+    "addservice.hostgroup.strategy", GroupByComponentsStrategy.class.getName());
+
+  /**
+   * Gets whether file-based VDF are allowed to be used.
+   */
+  @Markdown(description = "Controls whether VDF can be read from the filesystem.")
+  public static final ConfigurationProperty<Boolean> VDF_FROM_FILESYSTEM = new ConfigurationProperty<>(
+      "server.version_definition.allow_from_filesystem", Boolean.FALSE);
 
   private static final Logger LOG = LoggerFactory.getLogger(
     Configuration.class);
@@ -2726,6 +2798,7 @@ public class Configuration {
     configsMap.put(SRVR_ONE_WAY_SSL_PORT.getKey(), getProperty(SRVR_ONE_WAY_SSL_PORT));
     configsMap.put(SRVR_KSTR_DIR.getKey(), getProperty(SRVR_KSTR_DIR));
     configsMap.put(SRVR_CRT_NAME.getKey(), getProperty(SRVR_CRT_NAME));
+    configsMap.put(SRVR_CRT_CHAIN_NAME.getKey(), getProperty(SRVR_CRT_CHAIN_NAME));
     configsMap.put(SRVR_KEY_NAME.getKey(), getProperty(SRVR_KEY_NAME));
     configsMap.put(SRVR_CSR_NAME.getKey(), getProperty(SRVR_CSR_NAME));
     configsMap.put(KSTR_NAME.getKey(), getProperty(KSTR_NAME));
@@ -2880,7 +2953,7 @@ public class Configuration {
       System.setProperty(JAVAX_SSL_TRUSTSTORE, getProperty(SSL_TRUSTSTORE_PATH));
     }
     if (getProperty(SSL_TRUSTSTORE_PASSWORD) != null) {
-      String ts_password = PasswordUtils.getInstance().readPasswordFromStore(getProperty(SSL_TRUSTSTORE_PASSWORD), getMasterKeyLocation(), isMasterKeyPersisted(), getMasterKeyStoreLocation());
+      String ts_password = PasswordUtils.getInstance().readPasswordFromStore(getProperty(SSL_TRUSTSTORE_PASSWORD), this);
       if (ts_password != null) {
         System.setProperty(JAVAX_SSL_TRUSTSTORE_PASSWORD, ts_password);
       } else {
@@ -3038,7 +3111,9 @@ public class Configuration {
         LOG.error("Unable to write data into " + ambariUpgradeConfigUpdatesFilePath, e);
       } finally {
         try {
-          fileWriter.close();
+          if (fileWriter != null) {
+            fileWriter.close();
+          }
         } catch (IOException e) {
           LOG.error("Unable to close file " + ambariUpgradeConfigUpdatesFilePath, e);
         }
@@ -3098,14 +3173,9 @@ public class Configuration {
   public Map<String, String> getDatabaseConnectorNames() {
     File file = getConfigFile();
     Long currentConfigLastModifiedDate = file.lastModified();
-    Properties properties = null;
     if (currentConfigLastModifiedDate.longValue() != configLastModifiedDateForCustomJDBC.longValue()) {
       LOG.info("Ambari properties config file changed.");
-      if (configLastModifiedDateForCustomJDBC != null) {
-        properties = readConfigFile();
-      } else {
-        properties = this.properties;
-      }
+      Properties properties = readConfigFile();
 
       for (String propertyName : dbConnectorPropertyNames) {
         String propertyValue = properties.getProperty(propertyName);
@@ -3127,14 +3197,9 @@ public class Configuration {
   public Map<String, String> getPreviousDatabaseConnectorNames() {
     File file = getConfigFile();
     Long currentConfigLastModifiedDate = file.lastModified();
-    Properties properties = null;
     if (currentConfigLastModifiedDate.longValue() != configLastModifiedDateForCustomJDBCToRemove.longValue()) {
       LOG.info("Ambari properties config file changed.");
-      if (configLastModifiedDateForCustomJDBCToRemove != null) {
-        properties = readConfigFile();
-      } else {
-        properties = this.properties;
-      }
+      Properties properties = readConfigFile();
 
       for (String propertyName : dbConnectorPropertyNames) {
         propertyName = "previous." + propertyName;
@@ -3160,7 +3225,7 @@ public class Configuration {
   private JsonObject readFileToJSON (String file) {
 
     // Read from File to String
-    JsonObject jsonObject = new JsonObject();
+    JsonObject jsonObject;
 
     try {
       JsonParser parser = new JsonParser();
@@ -3472,6 +3537,14 @@ public class Configuration {
     return getProperty(MPACKS_STAGING_DIR_PATH);
   }
 
+  /**
+   * Gets ambari v2 management packs staging directory
+   * @return String
+   */
+  public String getMpacksV2StagingPath() {
+    return getProperty(MPACKS_V2_STAGING_DIR_PATH);
+  }
+
 
   public String getServerVersionFilePath() {
     return getProperty(SERVER_VERSION_FILE);
@@ -3711,6 +3784,19 @@ public class Configuration {
   }
 
   /**
+   * Get the comma separated additional classpath, that should be added to view's classloader.
+   * <p/>
+   * By default it will be empty. i.e. no additional classpath.
+   * If present it will be comma separated path entries. Each entry can be a file or a directory.
+   * If entry is a file it will be added as it is.
+   * If entry is a directory, all the files inside this directory will be added to the classpath.
+   * @return the view's additional classpath value - null or "" indicates that the value is not set
+   */
+  public String getViewsAdditionalClasspath() {
+    return getProperty(VIEWS_ADDITIONAL_CLASSPATH_VALUE);
+  }
+
+  /**
    * Get the value that should be set for the <code>Pragma</code> HTTP response header for Ambari Views.
    * <p/>
    * By default this will be <code>no-cache</code>. For example:
@@ -3765,6 +3851,15 @@ public class Configuration {
    */
   public boolean isApiGzipped() {
     return Boolean.parseBoolean(getProperty(API_GZIP_COMPRESSION_ENABLED));
+  }
+
+
+  /**
+   * Check to see if the API responses should be compressed via gzip or not
+   * @return false if not, true if gzip compression needs to be used.
+   */
+  public boolean isGzipHandlerEnabledForJetty() {
+    return Boolean.parseBoolean(getProperty(GZIP_HANDLER_JETTY_ENABLED));
   }
 
   /**
@@ -3841,13 +3936,13 @@ public class Configuration {
     String dbpasswd = null;
     boolean isPasswordAlias = false;
     if (CredentialProvider.isAliasString(passwdProp)) {
-      dbpasswd = PasswordUtils.getInstance().readPasswordFromStore(passwdProp, getMasterKeyLocation(), isMasterKeyPersisted(), getMasterKeyStoreLocation());
+      dbpasswd = PasswordUtils.getInstance().readPasswordFromStore(passwdProp, this);
       isPasswordAlias =true;
     }
 
     if (dbpasswd != null) {
       return dbpasswd;
-    } else if (dbpasswd == null && isPasswordAlias) {
+    } else if (isPasswordAlias) {
       LOG.error("Can't read db password from keystore. Please, check master key was set correctly.");
       throw new RuntimeException("Can't read db password from keystore. Please, check master key was set correctly.");
     } else {
@@ -4233,7 +4328,7 @@ public class Configuration {
     long value = SERVER_EC_CACHE_SIZE.getDefaultValue();
     if (stringValue != null) {
       try {
-        value = Long.valueOf(stringValue);
+        value = Long.parseLong(stringValue);
       } catch (NumberFormatException ignored) {
       }
 
@@ -4276,7 +4371,7 @@ public class Configuration {
     long value = SERVER_HRC_STATUS_SUMMARY_CACHE_SIZE.getDefaultValue();
     if (stringValue != null) {
       try {
-        value = Long.valueOf(stringValue);
+        value = Long.parseLong(stringValue);
       }
       catch (NumberFormatException ignored) {
       }
@@ -4297,7 +4392,7 @@ public class Configuration {
     long value = SERVER_HRC_STATUS_SUMMARY_CACHE_EXPIRY_DURATION.getDefaultValue();
     if (stringValue != null) {
       try {
-        value = Long.valueOf(stringValue);
+        value = Long.parseLong(stringValue);
       }
       catch (NumberFormatException ignored) {
       }
@@ -4388,10 +4483,10 @@ public class Configuration {
   public Long getExecutionSchedulerWait() {
 
     String stringValue = getProperty(EXECUTION_SCHEDULER_WAIT);
-    Long sleepTime = EXECUTION_SCHEDULER_WAIT.getDefaultValue();
+    long sleepTime = EXECUTION_SCHEDULER_WAIT.getDefaultValue();
     if (stringValue != null) {
       try {
-        sleepTime = Long.valueOf(stringValue);
+        sleepTime = Long.parseLong(stringValue);
       } catch (NumberFormatException ignored) {
         LOG.warn("Value of {} ({}) should be a number, " +
             "falling back to default value ({})", EXECUTION_SCHEDULER_WAIT.getKey(), stringValue,
@@ -4569,10 +4664,31 @@ public class Configuration {
   }
 
   /**
-   * @return the maximum size of a stomp text message. Default is 2 MB.
+   * @return the maximum size of an incoming stomp text message. Default is 2 MB.
    */
-  public int getStompMaxMessageSize() {
-    return Integer.parseInt(getProperty(STOMP_MAX_MESSAGE_SIZE));
+  public int getStompMaxIncomingMessageSize() {
+    return Integer.parseInt(getProperty(STOMP_MAX_INCOMING_MESSAGE_SIZE));
+  }
+
+  /**
+   * @return the maximum size of a buffer for stomp message sending. Default is 5 MB.
+   */
+  public int getStompMaxBufferMessageSize() {
+    return Integer.parseInt(getProperty(STOMP_MAX_BUFFER_MESSAGE_SIZE));
+  }
+
+  /**
+   * @return the number of attempts to emit execution command message to agent. Default is 4
+   */
+  public int getExecutionCommandsRetryCount() {
+    return Integer.parseInt(getProperty(EXECUTION_COMMANDS_RETRY_COUNT));
+  }
+
+  /**
+   * @return the interval in seconds between attempts to emit execution command message to agent. Default is 15
+   */
+  public int getExecutionCommandsRetryInterval() {
+    return Integer.parseInt(getProperty(EXECUTION_COMMANDS_RETRY_INTERVAL));
   }
 
   /**
@@ -5136,7 +5252,7 @@ public class Configuration {
   public int getOperationsRetryAttempts() {
     final int RETRY_ATTEMPTS_LIMIT = 10;
     String property = getProperty(OPERATIONS_RETRY_ATTEMPTS);
-    Integer attempts = Integer.valueOf(property);
+    int attempts = Integer.parseInt(property);
     if (attempts < 0) {
       LOG.warn("Invalid operations retry attempts number ({}), should be [0,{}]. Value reset to default {}",
           attempts, RETRY_ATTEMPTS_LIMIT, OPERATIONS_RETRY_ATTEMPTS.getDefaultValue());
@@ -5166,7 +5282,12 @@ public class Configuration {
   }
 
   public Boolean getGplLicenseAccepted(){
-    return Boolean.valueOf(getProperty(GPL_LICENSE_ACCEPTED));
+    Properties actualProps = readConfigFile();
+    String defaultGPLAcceptedValue = null;
+    if (null != GPL_LICENSE_ACCEPTED.getDefaultValue()) {
+      defaultGPLAcceptedValue = String.valueOf(GPL_LICENSE_ACCEPTED.getDefaultValue());
+    }
+    return Boolean.valueOf(actualProps.getProperty(GPL_LICENSE_ACCEPTED.getKey(), defaultGPLAcceptedValue));
   }
 
   public String getAgentStackRetryOnInstallCount(){
@@ -5416,11 +5537,28 @@ public class Configuration {
     return Boolean.parseBoolean(getProperty(SECURITY_PASSWORD_ENCRYPTON_ENABLED));
   }
 
+  public boolean isSensitiveDataEncryptionEnabled() {
+    return Boolean.parseBoolean(getProperty(SECURITY_SENSITIVE_DATA_ENCRYPTON_ENABLED));
+  }
+
+  public boolean shouldEncryptSensitiveData() {
+    return isSecurityPasswordEncryptionEnabled() && isSensitiveDataEncryptionEnabled();
+  }
+
   /**
    * @return default value of number of tasks to run in parallel during upgrades
    */
   public int getDefaultMaxParallelismForUpgrades() {
     return Integer.parseInt(getProperty(DEFAULT_MAX_DEGREE_OF_PARALLELISM_FOR_UPGRADES));
+  }
+
+  /**
+   * @return The class of the host group strategy for add service requests.
+   * @throws ClassNotFoundException if the specified class is not found
+   * @throws ClassCastException if the specified class is not a subclass of {@link HostGroupStrategy}
+   */
+  public Class<? extends HostGroupStrategy> getAddServiceHostGroupStrategyClass() throws ClassNotFoundException {
+    return Class.forName(getProperty(ADD_SERVICE_HOST_GROUP_STRATEGY)).asSubclass(HostGroupStrategy.class);
   }
 
   /**
@@ -5681,7 +5819,7 @@ public class Configuration {
     JETTY_THREAD_POOL("Jetty API & Agent Thread Pools");
 
     /**
-     * A decription of the grouping.
+     * A description of the grouping.
      */
     private String m_description;
 
@@ -5887,11 +6025,11 @@ public class Configuration {
   }
 
   public int getKerberosOperationRetries() {
-    return Integer.valueOf(getProperty(KERBEROS_OPERATION_RETRIES));
+    return Integer.parseInt(getProperty(KERBEROS_OPERATION_RETRIES));
   }
 
   public int getKerberosOperationRetryTimeout() {
-    return Integer.valueOf(getProperty(KERBEROS_OPERATION_RETRY_TIMEOUT));
+    return Integer.parseInt(getProperty(KERBEROS_OPERATION_RETRY_TIMEOUT));
   }
 
   public boolean validateKerberosOperationSSLCertTrust() {
@@ -5932,5 +6070,12 @@ public class Configuration {
 
   public int getAlertServiceCorePoolSize() {
     return Integer.parseInt(getProperty(SERVER_SIDE_ALERTS_CORE_POOL_SIZE));
+  }
+
+  /**
+   * @return {@code true} if local files can be specified in the API to consume VDF
+   */
+  public boolean areFileVDFAllowed() {
+    return Boolean.parseBoolean(getProperty(VDF_FROM_FILESYSTEM));
   }
 }

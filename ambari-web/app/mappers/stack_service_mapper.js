@@ -101,7 +101,7 @@ App.stackServiceMapper = App.QuickDataMapper.create({
       var serviceComponents = [];
       item.components.forEach(function (serviceComponent) {
         var dependencies = serviceComponent.dependencies.map(function (dependecy) {
-          return { Dependencies: App.keysUnderscoreToCamelCase(App.permit(dependecy.Dependencies, ['component_name', 'scope', 'service_name'])) };
+          return { Dependencies: App.keysUnderscoreToCamelCase(App.permit(dependecy.Dependencies, ['component_name', 'scope', 'service_name', 'type'])) };
         });
         serviceComponent.StackServiceComponents.id = serviceComponent.StackServiceComponents.component_name;
         serviceComponent.StackServiceComponents.dependencies = dependencies;
@@ -118,9 +118,6 @@ App.stackServiceMapper = App.QuickDataMapper.create({
       // @todo: replace with server response value after API implementation
       if (nonInstallableServices.contains(stackService.service_name)) {
         stackService.is_installable = false;
-        stackService.is_selected = false;
-      }
-      if (stackService.service_type === 'HCFS' && stackService.service_name !== 'HDFS') {
         stackService.is_selected = false;
       }
       if(stackService.selection === "MANDATORY") {

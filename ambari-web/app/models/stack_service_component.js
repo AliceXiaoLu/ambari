@@ -18,6 +18,22 @@
 
 var App = require('app');
 var numberUtils = require('utils/number_utils');
+
+var ComponentDependency = Ember.Object.extend({
+  componentName: null,
+  compatibleComponents: [],
+
+  /**
+   * Find the first compatible component which belongs to a service that is installed
+   */
+  chooseCompatible: function() {
+    var compatibleComponent = this.get('compatibleComponents').find(function(component) {
+      return App.Service.find().someProperty('serviceName', component.get('serviceName'))
+    });
+    return (compatibleComponent ? compatibleComponent : this.get('compatibleComponents')[0]).get('componentName');
+  }
+});
+
 /**
  * This model loads all serviceComponents supported by the stack
  * @type {*}
@@ -87,11 +103,20 @@ App.StackServiceComponent = DS.Model.extend({
     dependencies = opt.scope === '*' ? dependencies : dependencies.filterProperty('scope', opt.scope);
     if (dependencies.length === 0) return [];
     installedComponents = installedComponents.map(function(each) { return App.StackServiceComponent.find(each); });
-    return dependencies.filter(function (dependency) {
+    var missingComponents = dependencies.filter(function (dependency) {
       return !installedComponents.some(function(each) {
         return each.compatibleWith(App.StackServiceComponent.find(dependency.componentName));
       });
-    }).mapProperty('componentName');
+    });
+    return missingComponents.map(function (missingComponent) {
+      return ComponentDependency.create({
+        'componentName': missingComponent.componentName,
+        'type': missingComponent.type,
+        'compatibleComponents': App.StackServiceComponent.find().filter(function (each) {
+          return each.compatibleWith(App.StackServiceComponent.find(missingComponent.componentName));
+        })
+      });
+    });
   },
 
   /** @property {Boolean} isRequired - component required to install **/
@@ -99,6 +124,9 @@ App.StackServiceComponent = DS.Model.extend({
 
   /** @property {Boolean} isMultipleAllowed - component can be assigned for more than one host **/
   isMultipleAllowed: Em.computed.gt('maxToInstall', 1),
+  
+  /** @property {Boolean} isAddableAfterInstall - component can be added after it's service was installed **/
+  isAddableAfterInstall: Em.computed.gtProperties('maxToInstall', 'minToInstall'),
 
   /** @property {Boolean} isSlave **/
   isSlave: Em.computed.equal('componentCategory', 'SLAVE'),
@@ -131,8 +159,8 @@ App.StackServiceComponent = DS.Model.extend({
 
   /** @property {Boolean} isAddableToHost - component can be added on host details page **/
   isAddableToHost: function() {
-    return this.get('isMasterAddableInstallerWizard')
-      || ((this.get('isNotAddableOnlyInInstall') || this.get('isSlave') || this.get('isClient'))
+    return (this.get('isMaster') && !this.get('isMasterAddableOnlyOnHA') && this.get('isAddableAfterInstall'))
+      || ((this.get('isSlave') || this.get('isClient'))
         && (!this.get('isHAComponentOnly') || (App.get('isHaEnabled') && this.get('componentName') === 'JOURNALNODE')));
   }.property('componentName'),
 
@@ -142,13 +170,21 @@ App.StackServiceComponent = DS.Model.extend({
     return (this.get('isAddableToHost') && !ignored.contains(this.get('componentName'))) || (this.get('componentName') === 'MYSQL_SERVER');
   }.property('componentName'),
 
+  /**
+   * @type {boolean}
+   */
+  isInstallable: function() {
+    const notInstallable = App.get('currentStackName') === 'HDF' ? ['ACTIVITY_ANALYZER', 'ACTIVITY_EXPLORER'] : [];
+    return !notInstallable.contains(this.get('componentName'));
+  }.property('componentName'),
+
   /** @property {Boolean} isShownOnInstallerAssignMasterPage - component visible on "Assign Masters" step of Install Wizard **/
   // Note: Components that are not visible on Assign Master Page are not saved as part of host component recommendation/validation layout
   isShownOnInstallerAssignMasterPage: function() {
     var component = this.get('componentName');
     var mastersNotShown = ['MYSQL_SERVER', 'POSTGRESQL_SERVER', 'HIVE_SERVER_INTERACTIVE'];
-    return this.get('isMaster') && !mastersNotShown.contains(component);
-  }.property('isMaster','componentName'),
+    return this.get('isMaster') && this.get('isInstallable') && !mastersNotShown.contains(component);
+  }.property('isMaster','componentName', 'isInstallable'),
 
   /** @property {Boolean} isShownOnInstallerSlaveClientPage - component visible on "Assign Slaves and Clients" step of Install Wizard**/
   // Note: Components that are not visible on Assign Slaves and Clients Page are saved as part of host component recommendation/validation layout
@@ -180,7 +216,7 @@ App.StackServiceComponent = DS.Model.extend({
    *
    * @property {Boolean} isMasterAddableInstallerWizard
    **/
-  isMasterAddableInstallerWizard: Em.computed.and('isMaster', 'isMultipleAllowed', '!isMasterAddableOnlyOnHA', '!isNotAddableOnlyInInstall'),
+  isMasterAddableInstallerWizard: Em.computed.and('isMaster', 'isMultipleAllowed', '!isMasterAddableOnlyOnHA'),
 
   /**
    * Master components with cardinality more than 1 (n+ or n-n) that could not be added in wizards
@@ -222,10 +258,6 @@ App.StackServiceComponent = DS.Model.extend({
     var componentName = this.get('componentName');
     return !!App.StackServiceComponent.coHost[componentName];
   }.property('componentName'),
-
-  /** @property {Boolean} isNotAddableOnlyInInstall - is this component addable, except Install and Add Service Wizards  **/
-  isNotAddableOnlyInInstall: Em.computed.existsIn('componentName', ['HIVE_METASTORE', 'HIVE_SERVER', 'RANGER_KMS_SERVER',
-    'OOZIE_SERVER', 'TIMELINE_READER', 'YARN_REGISTRY_DNS']),
 
   /** @property {Boolean} isNotAllowedOnSingleNodeCluster - is this component allowed on single node  **/
   isNotAllowedOnSingleNodeCluster: Em.computed.existsIn('componentName', ['HAWQSTANDBY'])

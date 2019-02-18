@@ -726,6 +726,7 @@ public class ServiceInfoTest {
             "      <sso>" +
             "        <supported>true</supported>" +
             "        <enabledConfiguration>config-type/property_name</enabledConfiguration>" +
+            "        <kerberosRequired>true</kerberosRequired> " +
             "      </sso>" +
             "    </service>" +
             "  </services>" +
@@ -739,6 +740,7 @@ public class ServiceInfoTest {
     assertTrue(singleSignOnInfo.isSupported());
     assertEquals(Boolean.TRUE, singleSignOnInfo.getSupported());
     assertEquals("config-type/property_name", singleSignOnInfo.getEnabledConfiguration());
+    assertTrue(singleSignOnInfo.isKerberosRequired());
 
     // Explicit SSO setting (false)
     serviceInfoXml =
@@ -786,6 +788,194 @@ public class ServiceInfoTest {
     assertTrue(singleSignOnInfo.isSupported());
     assertEquals(Boolean.TRUE, singleSignOnInfo.getSupported());
     assertNull(singleSignOnInfo.getEnabledConfiguration());
+    assertNull(singleSignOnInfo.getSsoEnabledTest());
+  }
+
+  /**
+   * Tests the presence and absence of the kerberosEnabledTest block.
+   */
+  @Test
+  public void testKerberosEnabledTest() throws Exception {
+    Map<String, ServiceInfo> serviceInfoMap;
+    ServiceInfo service;
+
+    String kerberosEnabledTest =
+        "{\n" +
+            "  \"or\": [\n" +
+            "    {\n" +
+            "      \"equals\": [\n" +
+            "        \"core-site/hadoop.security.authentication\",\n" +
+            "        \"kerberos\"\n" +
+            "      ]\n" +
+            "    },\n" +
+            "    {\n" +
+            "      \"equals\": [\n" +
+            "        \"hdfs-site/hadoop.security.authentication\",\n" +
+            "        \"kerberos\"\n" +
+            "      ]\n" +
+            "    }\n" +
+            "  ]\n" +
+            "}";
+
+    String serviceInfoXml = "<metainfo>\n" +
+        "  <schemaVersion>2.0</schemaVersion>\n" +
+        "  <services>\n" +
+        "    <service>\n" +
+        "      <name>HDFS</name>\n" +
+        "      <kerberosEnabledTest>\n" +
+        kerberosEnabledTest +
+        "      </kerberosEnabledTest>\n" +
+        "    </service>\n" +
+        "  </services>\n" +
+        "</metainfo>\n";
+    serviceInfoMap = getServiceInfo(serviceInfoXml);
+    service = serviceInfoMap.get("HDFS");
+    assertEquals(kerberosEnabledTest, service.getKerberosEnabledTest().trim());
+
+    /*
+     * <kerberosEnabledTest> is missing
+     */
+    serviceInfoXml = "<metainfo>\n" +
+        "  <schemaVersion>2.0</schemaVersion>\n" +
+        "  <services>\n" +
+        "    <service>\n" +
+        "      <name>HDFS</name>\n" +
+        "    </service>\n" +
+        "  </services>\n" +
+        "</metainfo>\n";
+    serviceInfoMap = getServiceInfo(serviceInfoXml);
+    service = serviceInfoMap.get("HDFS");
+    assertNull(service.getKerberosEnabledTest());
+  }
+  
+  @Test
+  public void testLdapIntegrationSupport() throws Exception {
+    // Implicit SSO setting
+    String serviceInfoXml =
+        "<metainfo>" +
+            "  <schemaVersion>2.0</schemaVersion>" +
+            "  <services>" +
+            "    <service>" +
+            "      <name>SERVICE</name>" +
+            "    </service>" +
+            "  </services>" +
+            "</metainfo>";
+    Map<String, ServiceInfo> serviceInfoMap = getServiceInfo(serviceInfoXml);
+    assertFalse(serviceInfoMap.get("SERVICE").isLdapSupported());
+    assertTrue(serviceInfoMap.get("SERVICE").isValid());
+
+    ServiceLdapInfo ldapInfo = serviceInfoMap.get("SERVICE").getLdapInfo();
+    assertNull(ldapInfo);
+
+    // Explicit LDAP setting (true)
+    serviceInfoXml =
+        "<metainfo>" +
+            "  <schemaVersion>2.0</schemaVersion>" +
+            "  <services>" +
+            "    <service>" +
+            "      <name>SERVICE</name>" +
+            "      <ldap>" +
+            "        <supported>true</supported>" +
+            "        <ldapEnabledTest>{\"equals\": [\"config-type/property_name\", \"true\"]}</ldapEnabledTest>" +
+            "      </ldap>" +
+            "    </service>" +
+            "  </services>" +
+            "</metainfo>";
+    serviceInfoMap = getServiceInfo(serviceInfoXml);
+    assertTrue(serviceInfoMap.get("SERVICE").isLdapSupported());
+    assertTrue(serviceInfoMap.get("SERVICE").isValid());
+
+    ldapInfo = serviceInfoMap.get("SERVICE").getLdapInfo();
+    assertNotNull(ldapInfo);
+    assertTrue(ldapInfo.isSupported());
+    assertEquals("{\"equals\": [\"config-type/property_name\", \"true\"]}", ldapInfo.getLdapEnabledTest());
+
+    // Explicit LDAP setting (false)
+    serviceInfoXml =
+        "<metainfo>" +
+            "  <schemaVersion>2.0</schemaVersion>" +
+            "  <services>" +
+            "    <service>" +
+            "      <name>SERVICE</name>" +
+            "      <ldap>" +
+            "        <supported>false</supported>" +
+            "      </ldap>" +
+            "    </service>" +
+            "  </services>" +
+            "</metainfo>";
+    serviceInfoMap = getServiceInfo(serviceInfoXml);
+    assertFalse(serviceInfoMap.get("SERVICE").isLdapSupported());
+    assertTrue(serviceInfoMap.get("SERVICE").isValid());
+
+    ldapInfo = serviceInfoMap.get("SERVICE").getLdapInfo();
+    assertNotNull(ldapInfo);
+    assertFalse(ldapInfo.isSupported());
+    assertNull(ldapInfo.getLdapEnabledTest());
+
+    // Explicit SSO setting (invalid)
+    serviceInfoXml =
+        "<metainfo>" +
+            "  <schemaVersion>2.0</schemaVersion>" +
+            "  <services>" +
+            "    <service>" +
+            "      <name>SERVICE</name>" +
+            "      <ldap>" +
+            "        <supported>true</supported>" +
+            "      </ldap>" +
+            "    </service>" +
+            "  </services>" +
+            "</metainfo>";
+    serviceInfoMap = getServiceInfo(serviceInfoXml);
+    assertTrue(serviceInfoMap.get("SERVICE").isLdapSupported());
+    assertFalse(serviceInfoMap.get("SERVICE").isValid());
+    assertEquals(1, serviceInfoMap.get("SERVICE").getErrors().size());
+  }
+
+  @Test
+  public void testIsRollingRestartSupported() throws JAXBException {
+    // set to True
+    String serviceInfoXml =
+        "<metainfo>" +
+            "  <schemaVersion>2.0</schemaVersion>" +
+            "  <services>" +
+            "    <service>" +
+            "      <name>SERVICE</name>" +
+            "      <rollingRestartSupported>true</rollingRestartSupported>" +
+            "    </service>" +
+            "  </services>" +
+            "</metainfo>";
+    Map<String, ServiceInfo> serviceInfoMap = getServiceInfo(serviceInfoXml);
+    assertTrue(serviceInfoMap.get("SERVICE").isRollingRestartSupported());
+    assertTrue(serviceInfoMap.get("SERVICE").isValid());
+
+    // set to False
+    serviceInfoXml =
+        "<metainfo>" +
+            "  <schemaVersion>2.0</schemaVersion>" +
+            "  <services>" +
+            "    <service>" +
+            "      <name>SERVICE</name>" +
+            "      <rollingRestartSupported>false</rollingRestartSupported>" +
+            "    </service>" +
+            "  </services>" +
+            "</metainfo>";
+    serviceInfoMap = getServiceInfo(serviceInfoXml);
+    assertFalse(serviceInfoMap.get("SERVICE").isRollingRestartSupported());
+    assertTrue(serviceInfoMap.get("SERVICE").isValid());
+
+    // default to False
+    serviceInfoXml =
+        "<metainfo>" +
+            "  <schemaVersion>2.0</schemaVersion>" +
+            "  <services>" +
+            "    <service>" +
+            "      <name>SERVICE</name>" +
+            "    </service>" +
+            "  </services>" +
+            "</metainfo>";
+    serviceInfoMap = getServiceInfo(serviceInfoXml);
+    assertFalse(serviceInfoMap.get("SERVICE").isRollingRestartSupported());
+    assertTrue(serviceInfoMap.get("SERVICE").isValid());
   }
 
   private static Map<String, ServiceInfo> getServiceInfo(String xml) throws JAXBException {

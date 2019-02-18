@@ -58,7 +58,7 @@ stack_version_unformatted = config['clusterLevelParams']['stack_version']
 stack_version_formatted = format_stack_version(stack_version_unformatted)
 major_stack_version = get_major_version(stack_version_formatted)
 
-dfs_type = default("/commandParams/dfs_type", "")
+dfs_type = default("/clusterLevelParams/dfs_type", "")
 hadoop_conf_dir = "/etc/hadoop/conf"
 component_list = default("/localComponents", [])
 
@@ -112,6 +112,7 @@ hbase_master_hosts = default("/clusterHostInfo/hbase_master_hosts", [])
 hs_host = default("/clusterHostInfo/historyserver_hosts", [])
 jtnode_host = default("/clusterHostInfo/jtnode_hosts", [])
 namenode_host = default("/clusterHostInfo/namenode_hosts", [])
+hdfs_client_hosts = default("/clusterHostInfo/hdfs_client_hosts", [])
 zk_hosts = default("/clusterHostInfo/zookeeper_server_hosts", [])
 ganglia_server_hosts = default("/clusterHostInfo/ganglia_server_hosts", [])
 cluster_name = config["clusterName"]
@@ -124,6 +125,8 @@ else:
   ams_collector_hosts = ",".join(default("/clusterHostInfo/metrics_collector_hosts", []))
 
 has_namenode = not len(namenode_host) == 0
+has_hdfs_clients = len(hdfs_client_hosts) > 0
+has_hdfs = has_hdfs_clients or has_namenode
 has_resourcemanager = not len(rm_host) == 0
 has_slaves = not len(slave_hosts) == 0
 has_oozie_server = not len(oozie_servers) == 0
@@ -162,8 +165,10 @@ if has_metric_collector:
   metric_truststore_path= default("/configurations/ams-ssl-client/ssl.client.truststore.location", "")
   metric_truststore_type= default("/configurations/ams-ssl-client/ssl.client.truststore.type", "")
   metric_truststore_password= default("/configurations/ams-ssl-client/ssl.client.truststore.password", "")
+  metric_legacy_hadoop_sink = check_stack_feature(StackFeature.AMS_LEGACY_HADOOP_SINK, version_for_stack_feature_checks)
 
   pass
+
 metrics_report_interval = default("/configurations/ams-site/timeline.metrics.sink.report.interval", 60)
 metrics_collection_period = default("/configurations/ams-site/timeline.metrics.sink.collection.period", 10)
 

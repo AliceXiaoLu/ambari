@@ -24,6 +24,12 @@ App.MainServiceInfoConfigsController = Em.Controller.extend(App.AddSecurityConfi
   App.ConfigsComparator, App.ComponentActionsByConfigs, {
 
   name: 'mainServiceInfoConfigsController',
+  
+  /**
+   * Recommendations data will be completed on server side,
+   * UI doesn't have to send all cluster data as hosts, configurations, config-groups, etc.
+   */
+  isRecommendationsAutoComplete: true,
 
   isHostsConfigsPage: false,
 
@@ -230,7 +236,7 @@ App.MainServiceInfoConfigsController = Em.Controller.extend(App.AddSecurityConfi
     var filterColumns = [];
 
     this.get('propertyFilters').forEach(function(filter) {
-      if (this.get('canBeExcluded') && !(Em.isNone(filter.dependentOn) || this.get(filter.dependentOn))) {
+      if (filter.canBeExcluded && !(Em.isNone(filter.dependentOn) || this.get(filter.dependentOn))) {
         return; // exclude column
       }
       filterColumns.push(Ember.Object.create({
@@ -363,6 +369,13 @@ App.MainServiceInfoConfigsController = Em.Controller.extend(App.AddSecurityConfi
       self.trackRequest(self.loadServiceConfigVersions());
     }));
   },
+  
+  saveConfigs: function() {
+    const newVersionToBeCreated = Math.max.apply(null, App.ServiceConfigVersion.find().mapProperty('version')) + 1;
+    const isDefault = this.get('selectedConfigGroup.name') === App.ServiceConfigGroup.defaultGroupName;
+    this.set('currentDefaultVersion', isDefault ? newVersionToBeCreated : this.get('currentDefaultVersion'));
+    this._super();
+  },
 
   /**
    * Generate "finger-print" for current <code>stepConfigs[0]</code>
@@ -403,12 +416,12 @@ App.MainServiceInfoConfigsController = Em.Controller.extend(App.AddSecurityConfi
   },
 
   parseConfigData: function(data) {
-    var self = this;
-    this.loadKerberosIdentitiesConfigs().done(function(identityConfigs) {
-      self.prepareConfigObjects(data, identityConfigs);
-      self.loadCompareVersionConfigs(self.get('allConfigs')).done(function() {
-        self.addOverrides(data, self.get('allConfigs'));
-        self.onLoadOverrides(self.get('allConfigs'));
+    this.loadKerberosIdentitiesConfigs().done(identityConfigs => {
+      this.prepareConfigObjects(data, identityConfigs);
+      this.loadCompareVersionConfigs(this.get('allConfigs')).done(() => {
+        this.addOverrides(data, this.get('allConfigs'));
+        this.onLoadOverrides(this.get('allConfigs'));
+        this.updateAttributesFromTheme(this.get('content.serviceName'));
       });
     });
   },

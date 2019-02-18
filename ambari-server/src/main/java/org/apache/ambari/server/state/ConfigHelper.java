@@ -59,6 +59,7 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.math.NumberUtils;
 import org.apache.commons.lang3.StringEscapeUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -273,7 +274,7 @@ public class ConfigHelper {
       Entry<PropertyInfo, String> property = iterator.next();
       PropertyInfo propertyInfo = property.getKey();
       String propertyValue = property.getValue();
-      if (property == null || propertyValue == null || propertyValue.toLowerCase().equals("null") || propertyValue.isEmpty()) {
+      if (propertyValue == null || propertyValue.toLowerCase().equals("null") || propertyValue.isEmpty()) {
         LOG.error(String.format("Excluding property %s from %s, because of invalid or empty value!", propertyInfo.getName(), filteredListName));
         iterator.remove();
       } else {
@@ -870,6 +871,12 @@ public class ConfigHelper {
     }
 
     for (Service service : cluster.getServices().values()) {
+      // !!! the services map is from the stack, which may not contain services in the cluster.
+      // This is the case for upgrades where the target stack may remove services
+      if (!servicesMap.containsKey(service.getName())) {
+        continue;
+      }
+
       Set<PropertyInfo> serviceProperties = new HashSet<>(servicesMap.get(service.getName()).getProperties());
       for (PropertyInfo serviceProperty : serviceProperties) {
         if (serviceProperty.getPropertyTypes().contains(propertyType)) {
@@ -1476,7 +1483,7 @@ public class ConfigHelper {
       }
       stale = stale | staleEntry;
     }
-    
+
     String refreshCommand = calculateRefreshCommand(stackInfo.getRefreshCommandConfiguration(), sch, changedProperties);
 
     if (STALE_CONFIGS_CACHE_ENABLED) {
@@ -1524,7 +1531,8 @@ public class ConfigHelper {
           currentConfigEvents.put(host.getHostId(), m_agentConfigsHolder.get().getCurrentData(hostId));
         }
         if (!previousConfigEvents.containsKey(host.getHostId())) {
-          previousConfigEvents.put(host.getHostId(), m_agentConfigsHolder.get().getData(hostId));
+          previousConfigEvents.put(host.getHostId(),
+              m_agentConfigsHolder.get().initializeDataIfNeeded(hostId, true));
         }
       }
     }
@@ -2061,8 +2069,7 @@ public class ConfigHelper {
           new ClusterConfigs(configurationsTreeMap, configurationAttributesTreeMap));
     }
 
-    AgentConfigsUpdateEvent agentConfigsUpdateEvent = new AgentConfigsUpdateEvent(clustersConfigs);
-    agentConfigsUpdateEvent.setHostId(hostId);
+    AgentConfigsUpdateEvent agentConfigsUpdateEvent = new AgentConfigsUpdateEvent(hostId, clustersConfigs);
     return agentConfigsUpdateEvent;
   }
 
@@ -2115,6 +2122,73 @@ public class ConfigHelper {
     });
 
     return configurationAttributesTreeMap;
+  }
+
+  /**
+   * Determines the existing configurations for the cluster
+   *
+   * @param ambariManagementController
+   *          the Ambari management controller
+   * @param cluster
+   *          the cluster
+   * @return a map of the existing configurations
+   * @throws AmbariException
+   */
+  public Map<String, Map<String, String>> calculateExistingConfigurations(AmbariManagementController ambariManagementController, Cluster cluster) throws AmbariException {
+    final Map<String, Map<String, String>> configurations = new HashMap<>();
+    for (Host host : cluster.getHosts()) {
+      configurations.putAll(calculateExistingConfigurations(ambariManagementController, cluster, host.getHostName()));
+    }
+    return configurations;
+  }
+
+  /**
+   * Determines the existing configurations for the cluster, related to a given hostname (if provided)
+   *
+   * @param ambariManagementController the Ambari management controller
+   * @param cluster  the cluster
+   * @param hostname a hostname
+   * @return a map of the existing configurations
+   */
+  public Map<String, Map<String, String>> calculateExistingConfigurations(AmbariManagementController ambariManagementController, Cluster cluster, String hostname) throws AmbariException {
+    // For a configuration type, both tag and an actual configuration can be stored
+    // Configurations from the tag is always expanded and then over-written by the actual
+    // global:version1:{a1:A1,b1:B1,d1:D1} + global:{a1:A2,c1:C1,DELETED_d1:x} ==>
+    // global:{a1:A2,b1:B1,c1:C1}
+    final Map<String, Map<String, String>> configurations = new HashMap<>();
+    final Map<String, Map<String, String>> configurationTags = ambariManagementController.findConfigurationTagsWithOverrides(cluster, hostname);
+    final Map<String, Map<String, String>> configProperties = getEffectiveConfigProperties(cluster, configurationTags);
+
+    // Apply the configurations saved with the Execution Cmd on top of
+    // derived configs - This will take care of all the hacks
+    for (Map.Entry<String, Map<String, String>> entry : configProperties.entrySet()) {
+      String type = entry.getKey();
+      Map<String, String> allLevelMergedConfig = entry.getValue();
+      Map<String, String> configuration = configurations.get(type);
+
+      if (configuration == null) {
+        configuration = new HashMap<>(allLevelMergedConfig);
+      } else {
+        Map<String, String> mergedConfig = getMergedConfig(allLevelMergedConfig, configuration);
+        configuration.clear();
+        configuration.putAll(mergedConfig);
+      }
+
+      configurations.put(type, configuration);
+    }
+
+    return configurations;
+  }
+
+  /**
+   * Determines the existing configurations for the cluster, both properties and attributes.
+   */
+  public Pair<Map<String, Map<String, String>>, Map<String, Map<String, Map<String, String>>>> calculateExistingConfigs(Cluster cluster) throws AmbariException {
+    Map<String, Map<String, String>> desiredConfigTags = getEffectiveDesiredTags(cluster, null);
+    return Pair.of(
+      getEffectiveConfigProperties(cluster, desiredConfigTags),
+      getEffectiveConfigAttributes(cluster, desiredConfigTags)
+    );
   }
 
 }

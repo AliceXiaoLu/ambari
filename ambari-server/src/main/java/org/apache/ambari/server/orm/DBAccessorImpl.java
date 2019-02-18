@@ -341,7 +341,7 @@ public class DBAccessorImpl implements DBAccessor {
     if (!duplicatedColumns.isEmpty()) {
       throw new IllegalStateException(
               String.format("Request for columns [%s] existing in table [%s] returned too many results [%s] for columns [%s]",
-                      columnName, tableName, duplicatedColumns.size(), duplicatedColumns.toString()));
+                      Arrays.toString(columnName), tableName, duplicatedColumns.size(), duplicatedColumns.toString()));
     }
 
     return columnsList.size() == 0;
@@ -1063,9 +1063,7 @@ public class DBAccessorImpl implements DBAccessor {
       ScriptRunner scriptRunner = new ScriptRunner(getConnection(), false, false);
       scriptRunner.runScript(br);
     } finally {
-      if (br != null) {
-        br.close();
-      }
+      br.close();
     }
   }
 
@@ -1574,7 +1572,7 @@ public class DBAccessorImpl implements DBAccessor {
     }
     builder.append(requestedColumnNames[0]);
     for (int i = 1; i < requestedColumnNames.length; i++) {
-      builder.append(", ").append(requestedColumnNames[1]);
+      builder.append(", ").append(requestedColumnNames[i]);
     }
 
     // Append the source table

@@ -161,7 +161,7 @@ describe('App.UpdateController', function () {
         "host_components/metrics/hbase/master/MasterStartTime," +
         "host_components/metrics/hbase/master/MasterActiveTime," +
         "host_components/metrics/hbase/master/AverageLoad," +
-        "host_components/metrics/master/AssignmentManger/ritCount"]
+        "host_components/metrics/master/AssignmentManager/ritCount"]
       },
       {
         title: 'STORM service',
@@ -542,7 +542,9 @@ describe('App.UpdateController', function () {
   describe('#configsChangedHandler', function() {
     beforeEach(function() {
       sinon.stub(c, 'updateClusterEnv');
-      sinon.stub(App.router.get('configurationController'), 'updateConfigTags');
+      sinon.stub(App.router.get('configurationController'), 'updateConfigTags').returns({
+        always: Em.clb
+      });
     });
     afterEach(function() {
       c.updateClusterEnv.restore();

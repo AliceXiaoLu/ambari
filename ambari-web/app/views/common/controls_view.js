@@ -113,7 +113,6 @@ App.SupportsDependentConfigs = Ember.Mixin.create({
          }]);
       }
     }
-
     return $.Deferred().resolve().promise();
   },
 
@@ -171,6 +170,7 @@ App.ValueObserver = Em.Mixin.create(App.SupportsDependentConfigs, {
     if (this.get('selected') || this.get('serviceConfig.changedViaUndoValue')) {
       var self = this, config = this.get('serviceConfig'),
         controller = this.get('controller');
+      Em.set(config, 'didUserOverrideValue', true);
       delay(function(){
         self.sendRequestRorDependentConfigs(config, controller);
       }, 500);
@@ -187,6 +187,7 @@ App.WidgetValueObserver = Em.Mixin.create(App.ValueObserver, {
     if (this.get('selected')) {
       var self = this, config = this.get('config'),
         controller = this.get('controller');
+      Em.set(config, 'didUserOverrideValue', true);
       delay(function(){
         self.sendRequestRorDependentConfigs(config, controller);
       }, 500);
@@ -201,7 +202,11 @@ App.WidgetValueObserver = Em.Mixin.create(App.ValueObserver, {
 App.ServiceConfigCalculateId = Ember.Mixin.create({
   'data-qa': Ember.computed(function () {
     const config = this.get('config') && this.get('config.widget') ? this.get('config') : this.get('serviceConfig') || {};
-    return Em.get(config, 'name') || '';
+    const configName = Em.get(config, 'name') || '';
+    if (configName === 'content') {
+      return Em.get(config, 'id') || '';
+    }
+    return configName;
   })
 });
 
@@ -296,7 +301,7 @@ App.ServiceConfigTextFieldWithUnit = Ember.View.extend(App.ServiceConfigPopoverS
  * Password control
  * @type {*}
  */
-App.ServiceConfigPasswordField = Ember.View.extend(App.ServiceConfigPopoverSupport, {
+App.ServiceConfigPasswordField = Ember.View.extend(App.ServiceConfigPopoverSupport, App.ServiceConfigCalculateId, {
 
   serviceConfig: null,
 

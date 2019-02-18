@@ -37,6 +37,7 @@ The following are the properties which can be used to configure Ambari.
 | Property Name | Description | Default |
 | --- | --- | --- |
 | active.instance | Indicates whether the current ambari server instance is active or not. |`true` | 
+| addservice.hostgroup.strategy | Fully qualified class name of the strategy used to form host groups for add service request layout recommendation. |`org.apache.ambari.server.topology.addservice.GroupByComponentsStrategy` | 
 | agent.api.acceptor.count | Count of acceptors to configure for the jetty connector used for Ambari agent. | | 
 | agent.api.gzip.compression.enabled | Determiens whether communication with the Ambari Agents should have the JSON payloads compressed with GZIP. |`true` | 
 | agent.auto.cache.update | Determines whether the agents will automatically attempt to download updates to stack resources from the Ambari Server. |`true` | 
@@ -107,8 +108,11 @@ The following are the properties which can be used to configure Ambari.
 | db.mysql.jdbc.name | The name of the MySQL JDBC JAR connector. |`mysql-connector-java.jar` | 
 | db.oracle.jdbc.name | The name of the Oracle JDBC JAR connector. |`ojdbc6.jar` | 
 | default.kdcserver.port | The port used to communicate with the Kerberos Key Distribution Center. |`88` | 
+| execution.command.retry.count | The number of attempts to emit execution command message to agent. Default is 4 |`4` | 
+| execution.command.retry.interval | The interval in seconds between attempts to emit execution command message to agent. Default is 15 |`15` | 
 | extensions.path | The location on the Ambari Server where stack extensions exist.<br/><br/>The following are examples of valid values:<ul><li>`/var/lib/ambari-server/resources/extensions`</ul> | | 
 | gpl.license.accepted | Whether user accepted GPL license. |`false` | 
+| gzip.handler.jetty.enabled | Determines whether jetty Gzip compression is enabled or not. |`true` | 
 | http.cache-control | The value that will be used to set the `Cache-Control` HTTP response header. |`no-store` | 
 | http.charset | The value that will be used to set the Character encoding to HTTP response header. |`utf-8` | 
 | http.pragma | The value that will be used to set the `PRAGMA` HTTP response header. |`no-cache` | 
@@ -131,11 +135,12 @@ The following are the properties which can be used to configure Ambari.
 | logsearch.portal.connect.timeout | The time, in milliseconds, that the Ambari Server will wait while attempting to connect to the LogSearch Portal service. |`5000` | 
 | logsearch.portal.external.address | Address of an external LogSearch Portal service. (managed outside of Ambari) Using Ambari Credential store is required for this feature (credential: 'logsearch.admin.credential') | | 
 | logsearch.portal.read.timeout | The time, in milliseconds, that the Ambari Server will wait while attempting to read a response from the LogSearch Portal service. |`5000` | 
-| messaging.threadpool.size | Thread pool size for spring messaging |`1` | 
+| messaging.threadpool.size | Thread pool size for spring messaging |`10` | 
 | metadata.path | The location on the Ambari Server where the stack resources exist.<br/><br/>The following are examples of valid values:<ul><li>`/var/lib/ambari-server/resources/stacks`</ul> | | 
 | metrics.retrieval-service.cache.timeout | The amount of time, in minutes, that JMX and REST metrics retrieved directly can remain in the cache. |`30` | 
 | metrics.retrieval-service.request.ttl | The number of seconds to wait between issuing JMX or REST metric requests to the same endpoint. This property is used to throttle requests to the same URL being made too close together<br/><br/> This property is related to `metrics.retrieval-service.request.ttl.enabled`. |`5` | 
 | metrics.retrieval-service.request.ttl.enabled | Enables throttling requests to the same endpoint within a fixed amount of time. This property will prevent Ambari from making new metric requests to update the cache for URLs which have been recently retrieved.<br/><br/> This property is related to `metrics.retrieval-service.request.ttl`. |`true` | 
+| mpacks-v2.staging.path | The Ambari Management Pack version-2 staging directory on the Ambari Server.<br/><br/>The following are examples of valid values:<ul><li>`/var/lib/ambari-server/resources/mpacks-v2`</ul> | | 
 | mpacks.staging.path | The Ambari Management Pack staging directory on the Ambari Server.<br/><br/>The following are examples of valid values:<ul><li>`/var/lib/ambari-server/resources/mpacks`</ul> | | 
 | notification.dispatch.alert.script.directory | The directory for scripts which are used by the alert notification dispatcher. |`/var/lib/ambari-server/resources/scripts` | 
 | packages.pre.installed | Determines whether Ambari Agent instances have already have the necessary stack software installed |`false` | 
@@ -162,6 +167,7 @@ The following are the properties which can be used to configure Ambari.
 | security.master.key.location | The location on the Ambari Server of the master key file. This is the key to the master keystore. | | 
 | security.master.keystore.location | The location on the Ambari Server of the master keystore file. | | 
 | security.passwords.encryption.enabled | Whether security password encryption is enabled or not. In case it is we store passwords in their own file(s); otherwise we store passwords in the Ambari credential store. |`false` | 
+| security.server.cert_chain_name | The name of the file located in the `security.server.keys_dir` directory containing the CA certificate chain used to verify certificates during 2-way SSL communications. |`ca_chain.pem` | 
 | security.server.cert_name | The name of the file located in the `security.server.keys_dir` directory where certificates will be generated when Ambari uses the `openssl ca` command. |`ca.crt` | 
 | security.server.crt_pass | The password for the keystores, truststores, and certificates. If not specified, then `security.server.crt_pass_file` should be used | | 
 | security.server.crt_pass.len | The length of the randomly generated password for keystores and truststores.  |`50` | 
@@ -169,6 +175,7 @@ The following are the properties which can be used to configure Ambari.
 | security.server.csr_name | The name of the certificate request file used when generating certificates. |`ca.csr` | 
 | security.server.disabled.ciphers | A list of cipher suites which are not strong enough to use and will be excluded when creating SSL connections.<br/><br/>The following are examples of valid values:<ul><li>`SSL_RSA_WITH_RC4_128_MD5\|SSL_RSA_WITH_RC4_12‌​8_MD5`</ul> | | 
 | security.server.disabled.protocols | The list of protocols which should not be used when creating SSL connections.<br/><br/>The following are examples of valid values:<ul><li>`TLSv1.1\|TLSv1.2`</ul> | | 
+| security.server.encrypt_sensitive_data | Whether to encrypt sensitive data (at rest) on service level configuration. |`false` | 
 | security.server.key_name | The name of the private key used to sign requests. |`ca.key` | 
 | security.server.keys_dir | The directory on the Ambari Server where keystores are kept. |`.` | 
 | security.server.keystore_name | The name of the keystore file, located in `security.server.keys_dir` |`keystore.p12` | 
@@ -255,6 +262,7 @@ The following are the properties which can be used to configure Ambari.
 | server.timeline.metrics.https.enabled | Determines whether to use to SSL to connect to Ambari Metrics when retrieving metric data. |`false` | 
 | server.tmp.dir | The location on the Ambari Server where temporary artifacts can be created. |`/var/lib/ambari-server/tmp` | 
 | server.version.file | The full path to the file which contains the Ambari Server version. This is used to ensure that there is not a version mismatch between Ambari Agents and Ambari Server.<br/><br/>The following are examples of valid values:<ul><li>`/var/lib/ambari-server/resources/version`</ul> | | 
+| server.version_definition.allow_from_filesystem | Controls whether VDF can be read from the filesystem. |`false` | 
 | server.version_definition.connect.timeout.millis | The time, in milliseconds, that requests to connect to a URL to retrieve Version Definition Files (VDF) will wait before being terminated. |`5000` | 
 | server.version_definition.read.timeout.millis | The time, in milliseconds, that requests to read from a connected URL to retrieve Version Definition Files (VDF) will wait before being terminated. |`5000` | 
 | shared.resources.dir | The location on the Ambari Server where resources are stored. This is exposed via HTTP in order for Ambari Agents to access them. |`/usr/lib/ambari-server/lib/ambari_commons/resources` | 
@@ -273,7 +281,8 @@ The following are the properties which can be used to configure Ambari.
 | stack.upgrade.bypass.prechecks | Determines whether pre-upgrade checks will be skipped when performing a rolling or express stack upgrade. |`false` | 
 | stack.upgrade.default.parallelism | Default value of max number of tasks to schedule in parallel for upgrades. Upgrade packs can override this value. |`100` | 
 | stackadvisor.script | The location and name of the Python stack advisor script executed when configuring services. |`/var/lib/ambari-server/resources/scripts/stack_advisor.py` | 
-| stomp.max.message.size | The maximum size of a stomp text message. Default is 2 MB. |`2097152` | 
+| stomp.max_buffer.message.size | The maximum size of a buffer for stomp message sending. Default is 5 MB. |`5242880` | 
+| stomp.max_incoming.message.size | The maximum size of an incoming stomp text message. Default is 2 MB. |`2097152` | 
 | subscription.registry.cache.size | Maximal cache size for spring subscription registry. |`1500` | 
 | task.query.parameterlist.size | The maximum number of tasks which can be queried by ID from the database. |`999` | 
 | topology.task.creation.parallel | Indicates whether parallel topology task creation is enabled |`false` | 
@@ -284,6 +293,7 @@ The following are the properties which can be used to configure Ambari.
 | view.extraction.threadpool.timeout | The time, in milliseconds, that non-core threads will live when extraction views on Ambari Server startup. |`100000` | 
 | view.request.threadpool.size.max | The maximum number of threads which will be allocated to handling REST API requests from embedded views. This value should be smaller than `agent.threadpool.size.max`<br/><br/> This property is related to `agent.threadpool.size.max`. |`0` | 
 | view.request.threadpool.timeout | The time, milliseconds, that REST API requests from embedded views can wait if there are no threads available to service the view's request. Setting this too low can cause views to timeout. |`2000` | 
+| views.additional.classpath | Additional class path added to each Ambari View. Comma separated jars or directories | | 
 | views.ambari.request.connect.timeout.millis | The amount of time, in milliseconds, that a view will wait when trying to connect on HTTP(S) operations to the Ambari REST API. |`30000` | 
 | views.ambari.request.read.timeout.millis | The amount of time, in milliseconds, that a view will wait before terminating an HTTP(S) read request to the Ambari REST API. |`45000` | 
 | views.dir | The directory on the Ambari Server file system used for expanding Views and storing webapp work. |`/var/lib/ambari-server/resources/views` | 

@@ -108,6 +108,7 @@ else:
   class ONEFSServiceAdvisor(service_advisor.ServiceAdvisor):
     def getServiceConfigurationRecommendations(self, configs, clusterData, services, hosts):
       try:
+        self.recommendHadoopProxyUsers(configs, services, hosts)
         putCoreSiteProperty = self.putProperty(configs, "core-site", services)
         putHdfsSiteProperty = self.putProperty(configs, "hdfs-site", services)
         onefs_host = Uri.onefs(services)
@@ -137,6 +138,9 @@ else:
 
     def getServiceConfigurationsValidationItems(self, configs, recommendedDefaults, services, hosts):
       validation_errors = []
-      validation_errors.extend(self.toConfigurationValidationProblems(CoreSite(services).validate(), 'core-site'))
-      validation_errors.extend(self.toConfigurationValidationProblems(HdfsSite(services).validate(), 'hdfs-site'))
+      try:
+        validation_errors.extend(self.toConfigurationValidationProblems(CoreSite(services).validate(), 'core-site'))
+        validation_errors.extend(self.toConfigurationValidationProblems(HdfsSite(services).validate(), 'hdfs-site'))
+      except KeyError as e:
+        self.logger.info('Cannot get OneFS properties from config. KeyError: %s' % e)
       return validation_errors

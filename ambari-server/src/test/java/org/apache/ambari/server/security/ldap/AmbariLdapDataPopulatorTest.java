@@ -37,7 +37,6 @@ import static org.junit.Assert.assertEquals;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -293,7 +292,7 @@ public class AmbariLdapDataPopulatorTest {
     expect(populator.getLdapGroups("group2")).andReturn(Collections.emptySet());
     LdapGroupDto externalGroup1 = createNiceMock(LdapGroupDto.class);
     LdapBatchDto batchInfo = new LdapBatchDto();
-    populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup1), EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+    populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup1), EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
     expectLastCall();
     expect(populator.getLdapGroups("group4")).andReturn(Collections.singleton(externalGroup1));
     expect(populator.getLdapGroups("group5")).andReturn(Collections.emptySet());
@@ -302,7 +301,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeExistingLdapGroups(batchInfo);
+    LdapBatchDto result = populator.synchronizeExistingLdapGroups(batchInfo, false);
 
     verifyGroupsInSet(result.getGroupsToBeRemoved(), Sets.newHashSet("group2", "group5"));
     assertTrue(result.getGroupsToBecomeLdap().isEmpty());
@@ -365,7 +364,7 @@ public class AmbariLdapDataPopulatorTest {
 
     replay(dataPopulator);
     // WHEN
-    dataPopulator.synchronizeExistingLdapGroups(batchInfo);
+    dataPopulator.synchronizeExistingLdapGroups(batchInfo, false);
     // THEN
     verify(dataPopulator, group1, group2);
 
@@ -422,14 +421,14 @@ public class AmbariLdapDataPopulatorTest {
     Set<LdapGroupDto> externalGroups = createSet(externalGroup3, externalGroup4);
     for (LdapGroupDto externalGroup : externalGroups) {
       populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup),
-          EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+          EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
       expectLastCall();
     }
     populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup1),
-        EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+        EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
     expectLastCall();
     populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup2), EasyMock.anyObject(),
-        EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+        EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
     expectLastCall();
     expect(populator.getLdapGroups("x*")).andReturn(externalGroups);
     expect(populator.getLdapGroups("group1")).andReturn(Collections.singleton(externalGroup1));
@@ -439,7 +438,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeLdapGroups(createSet("x*", "group1", "group2"), batchInfo);
+    LdapBatchDto result = populator.synchronizeLdapGroups(createSet("x*", "group1", "group2"), batchInfo, false);
 
     verifyGroupsInSet(result.getGroupsToBecomeLdap(), Sets.newHashSet("group1"));
     verifyGroupsInSet(result.getGroupsToBeCreated(), Sets.newHashSet("xgroup1", "xgroup2"));
@@ -505,11 +504,11 @@ public class AmbariLdapDataPopulatorTest {
     Set<LdapGroupDto> externalGroups = createSet(externalGroup3, externalGroup4);
     for (LdapGroupDto externalGroup : externalGroups) {
       populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup), EasyMock.anyObject(), EasyMock.anyObject(),
-          EasyMock.anyObject(), anyBoolean());
+          EasyMock.anyObject(), anyBoolean(), eq(false));
       expectLastCall();
     }
     populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup2), EasyMock.anyObject(),
-        EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+        EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
     expectLastCall();
     expect(populator.getLdapGroups("x*")).andReturn(externalGroups);
     expect(populator.getLdapGroups("group2")).andReturn(Collections.singleton(externalGroup2));
@@ -518,7 +517,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeLdapGroups(createSet("x*", "group2"), batchInfo);
+    LdapBatchDto result = populator.synchronizeLdapGroups(createSet("x*", "group2"), batchInfo, false);
 
     verifyGroupsInSet(result.getGroupsToBeCreated(), Sets.newHashSet("xgroup1", "xgroup2"));
     assertTrue(result.getGroupsToBeRemoved().isEmpty());
@@ -582,7 +581,7 @@ public class AmbariLdapDataPopulatorTest {
     Set<LdapGroupDto> externalGroups = createSet(externalGroup1, externalGroup2, externalGroup3, externalGroup4);
     for (LdapGroupDto externalGroup : externalGroups) {
       populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup), EasyMock.anyObject(),
-          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
       expectLastCall();
     }
     expect(populator.getLdapGroups("group*")).andReturn(externalGroups);
@@ -591,7 +590,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeLdapGroups(createSet("group*"), batchInfo);
+    LdapBatchDto result = populator.synchronizeLdapGroups(createSet("group*"), batchInfo, false);
 
     verifyGroupsInSet(result.getGroupsToBecomeLdap(), Sets.newHashSet("group1", "group4"));
     assertTrue(result.getGroupsToBeCreated().isEmpty());
@@ -661,7 +660,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    populator.synchronizeLdapGroups(createSet("x*", "group1", "group2"), batchInfo);
+    populator.synchronizeLdapGroups(createSet("x*", "group1", "group2"), batchInfo, false);
   }
 
   @SuppressWarnings("unchecked")
@@ -717,7 +716,7 @@ public class AmbariLdapDataPopulatorTest {
     Set<LdapGroupDto> externalGroups = createSet(externalGroup1, externalGroup2, externalGroup3, externalGroup4);
     for (LdapGroupDto externalGroup : externalGroups) {
       populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup), EasyMock.anyObject(),
-          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
       expectLastCall();
     }
 
@@ -728,7 +727,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapGroups(batchInfo);
+    LdapBatchDto result = populator.synchronizeAllLdapGroups(batchInfo, false);
 
     verifyGroupsInSet(result.getGroupsToBeRemoved(), Sets.newHashSet("group2"));
     verifyGroupsInSet(result.getGroupsToBecomeLdap(), Sets.newHashSet("group3"));
@@ -778,7 +777,7 @@ public class AmbariLdapDataPopulatorTest {
     Set<LdapGroupDto> externalGroups = createSet(externalGroup1, externalGroup2);
     for (LdapGroupDto externalGroup : externalGroups) {
       populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup), EasyMock.anyObject(),
-          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
       expectLastCall();
     }
     expect(populator.getExternalLdapGroupInfo()).andReturn(externalGroups);
@@ -788,7 +787,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapGroups(batchInfo);
+    LdapBatchDto result = populator.synchronizeAllLdapGroups(batchInfo, false);
 
     verifyGroupsInSet(result.getGroupsToBeCreated(), Sets.newHashSet("group3", "group4"));
     assertTrue(result.getGroupsToBecomeLdap().isEmpty());
@@ -844,7 +843,7 @@ public class AmbariLdapDataPopulatorTest {
     Set<LdapGroupDto> externalGroups = createSet(externalGroup1);
     for (LdapGroupDto externalGroup : externalGroups) {
       populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup), EasyMock.anyObject(),
-          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
       expectLastCall();
     }
     expect(populator.getExternalLdapGroupInfo()).andReturn(externalGroups);
@@ -854,7 +853,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapGroups(batchInfo);
+    LdapBatchDto result = populator.synchronizeAllLdapGroups(batchInfo, false);
 
     verifyGroupsInSet(result.getGroupsToBeRemoved(), Sets.newHashSet("group2", "group4"));
     assertTrue(result.getGroupsToBeCreated().isEmpty());
@@ -909,7 +908,7 @@ public class AmbariLdapDataPopulatorTest {
     Set<LdapGroupDto> externalGroups = createSet(externalGroup1, externalGroup2);
     for (LdapGroupDto externalGroup : externalGroups) {
       populator.refreshGroupMembers(eq(batchInfo), eq(externalGroup), EasyMock.anyObject(),
-          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean());
+          EasyMock.anyObject(), EasyMock.anyObject(), anyBoolean(), eq(false));
       expectLastCall();
     }
     expect(populator.getExternalLdapGroupInfo()).andReturn(externalGroups);
@@ -919,7 +918,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapGroups(batchInfo);
+    LdapBatchDto result = populator.synchronizeAllLdapGroups(batchInfo, false);
 
     verifyGroupsInSet(result.getGroupsToBecomeLdap(), Sets.newHashSet("group2", "group3"));
     assertTrue(result.getGroupsToBeCreated().isEmpty());
@@ -984,7 +983,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersToBeRemoved(), Sets.newHashSet("synced_user1"));
     verifyUsersInSet(result.getUsersToBeCreated(), Sets.newHashSet("external_user1", "external_user2"));
@@ -1045,7 +1044,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersSkipped(), Sets.newHashSet("local1", "local2"));
     assertTrue(result.getUsersToBeCreated().isEmpty());
@@ -1099,7 +1098,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersToBeCreated(), Sets.newHashSet("user3", "user4"));
     assertTrue(result.getUsersToBecomeLdap().isEmpty());
@@ -1151,7 +1150,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersToBeRemoved(), Sets.newHashSet("user3", "user1"));
     assertTrue(result.getUsersToBecomeLdap().isEmpty());
@@ -1211,7 +1210,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeAllLdapUsers(new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersToBecomeLdap(), Sets.newHashSet("user3"));
     assertTrue(result.getUsersToBeRemoved().isEmpty());
@@ -1266,7 +1265,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeExistingLdapUsers(new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeExistingLdapUsers(new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersToBeRemoved(), Sets.newHashSet("synced_user1"));
     assertTrue(result.getUsersToBeCreated().isEmpty());
@@ -1333,7 +1332,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeLdapUsers(createSet("user1", "user2", "xuser*"), new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeLdapUsers(createSet("user1", "user2", "xuser*"), new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersToBeCreated(), Sets.newHashSet("xuser3", "xuser4"));
     verifyUsersInSet(result.getUsersToBecomeLdap(), Sets.newHashSet("user1"));
@@ -1397,7 +1396,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeLdapUsers(createSet("user2", "xuser*"), new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeLdapUsers(createSet("user2", "xuser*"), new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersToBeCreated(), Sets.newHashSet("xuser3", "xuser4"));
     assertTrue(result.getUsersToBecomeLdap().isEmpty());
@@ -1462,7 +1461,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    LdapBatchDto result = populator.synchronizeLdapUsers(createSet("user2", "user1", "user6"), new LdapBatchDto());
+    LdapBatchDto result = populator.synchronizeLdapUsers(createSet("user2", "user1", "user6"), new LdapBatchDto(), false);
 
     verifyUsersInSet(result.getUsersToBecomeLdap(), Sets.newHashSet("user1", "user6"));
     assertTrue(result.getUsersToBeCreated().isEmpty());
@@ -1511,7 +1510,7 @@ public class AmbariLdapDataPopulatorTest {
     populator.setLdapTemplate(ldapTemplate);
     populator.setLdapServerProperties(ldapServerProperties);
 
-    populator.synchronizeLdapUsers(createSet("user1", "user2", "xuser*"), new LdapBatchDto());
+    populator.synchronizeLdapUsers(createSet("user1", "user2", "xuser*"), new LdapBatchDto(), false);
   }
 
   @SuppressWarnings("unchecked")
@@ -1594,7 +1593,7 @@ public class AmbariLdapDataPopulatorTest {
     Map<String, Group> internalGroups = new HashMap<>();
     internalGroups.put("group2", group2);
 
-    populator.refreshGroupMembers(batchInfo, externalGroup, internalUsers, internalGroups, null, true);
+    populator.refreshGroupMembers(batchInfo, externalGroup, internalUsers, internalGroups, null, true, false);
 
     verifyMembershipInSet(batchInfo.getMembershipToAdd(), Sets.newHashSet("user1", "user2", "user6"));
     verifyMembershipInSet(batchInfo.getMembershipToRemove(), Sets.newHashSet("user3", "user4"));
@@ -2041,7 +2040,7 @@ public class AmbariLdapDataPopulatorTest {
     final UserEntity userEntity = new UserEntity();
     userEntity.setUserId(userIdCounter++);
     userEntity.setUserName(UserName.fromString(name).toString());
-    userEntity.setCreateTime(new Date());
+    userEntity.setCreateTime(0);
     userEntity.setActive(true);
     userEntity.setMemberEntities(new HashSet<>());
 

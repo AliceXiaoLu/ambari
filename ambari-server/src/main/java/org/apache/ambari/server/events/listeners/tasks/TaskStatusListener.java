@@ -28,14 +28,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.ambari.server.ClusterNotFoundException;
 import org.apache.ambari.server.EagerSingleton;
 import org.apache.ambari.server.Role;
 import org.apache.ambari.server.actionmanager.HostRoleCommand;
 import org.apache.ambari.server.actionmanager.HostRoleStatus;
 import org.apache.ambari.server.actionmanager.Request;
 import org.apache.ambari.server.actionmanager.Stage;
+import org.apache.ambari.server.api.stomp.NamedTasksSubscriptions;
 import org.apache.ambari.server.controller.internal.CalculatedStatus;
+import org.apache.ambari.server.events.NamedTaskUpdateEvent;
 import org.apache.ambari.server.events.RequestUpdateEvent;
 import org.apache.ambari.server.events.TaskCreateEvent;
 import org.apache.ambari.server.events.TaskUpdateEvent;
@@ -96,12 +97,15 @@ public class TaskStatusListener {
 
   private STOMPUpdatePublisher STOMPUpdatePublisher;
 
+  private NamedTasksSubscriptions namedTasksSubscriptions;
+
   @Inject
   public TaskStatusListener(TaskEventPublisher taskEventPublisher, StageDAO stageDAO, RequestDAO requestDAO,
-                            STOMPUpdatePublisher STOMPUpdatePublisher) {
+                            STOMPUpdatePublisher STOMPUpdatePublisher, NamedTasksSubscriptions namedTasksSubscriptions) {
     this.stageDAO = stageDAO;
     this.requestDAO = requestDAO;
     this.STOMPUpdatePublisher = STOMPUpdatePublisher;
+    this.namedTasksSubscriptions = namedTasksSubscriptions;
     taskEventPublisher.register(this);
   }
 
@@ -123,13 +127,14 @@ public class TaskStatusListener {
    * @param event Consumes {@link TaskUpdateEvent}.
    */
   @Subscribe
-  public void onTaskUpdateEvent(TaskUpdateEvent event) throws ClusterNotFoundException {
+  public void onTaskUpdateEvent(TaskUpdateEvent event) {
     LOG.debug("Received task update event {}", event);
     List<HostRoleCommand> hostRoleCommandListAll = event.getHostRoleCommands();
     List<HostRoleCommand>  hostRoleCommandWithReceivedStatus =  new ArrayList<>();
     Set<StageEntityPK> stagesWithReceivedTaskStatus = new HashSet<>();
     Set<Long> requestIdsWithReceivedTaskStatus =  new HashSet<>();
     Set<RequestUpdateEvent> requestsToPublish = new HashSet<>();
+    Set<NamedTaskUpdateEvent> namedTasksToPublish = new HashSet<>();
 
     for (HostRoleCommand hostRoleCommand : hostRoleCommandListAll) {
       Long reportedTaskId = hostRoleCommand.getTaskId();
@@ -144,14 +149,39 @@ public class TaskStatusListener {
         stagesWithReceivedTaskStatus.add(stageEntityPK);
         requestIdsWithReceivedTaskStatus.add(hostRoleCommand.getRequestId());
 
+        NamedTaskUpdateEvent namedTaskUpdateEvent = new NamedTaskUpdateEvent(hostRoleCommand);
+        if (namedTasksSubscriptions.checkTaskId(reportedTaskId)
+            && !namedTaskUpdateEvent.equals(new NamedTaskUpdateEvent(activeTasksMap.get(reportedTaskId)))) {
+          namedTasksToPublish.add(namedTaskUpdateEvent);
+        }
+
+        // unsubscribe on complete (no any update will be sent anyway)
+        if (hostRoleCommand.getStatus().equals(HostRoleStatus.COMPLETED)) {
+          namedTasksSubscriptions.removeTaskId(reportedTaskId);
+        }
+
         if (!activeTasksMap.get(reportedTaskId).getStatus().equals(hostRoleCommand.getStatus())) {
-          Set<RequestUpdateEvent.HostRoleCommand> hostRoleCommands = new HashSet<>();
-          hostRoleCommands.add(new RequestUpdateEvent.HostRoleCommand(hostRoleCommand.getTaskId(),
-              hostRoleCommand.getRequestId(),
-              hostRoleCommand.getStatus(),
-              hostRoleCommand.getHostName()));
-          requestsToPublish.add(new RequestUpdateEvent(hostRoleCommand.getRequestId(),
-              activeRequestMap.get(hostRoleCommand.getRequestId()).getStatus(), hostRoleCommands));
+          // Ignore requests not related to any cluster. "requests" topic is used for cluster requests only.
+          Long clusterId = activeRequestMap.get(hostRoleCommand.getRequestId()).getClusterId();
+          if (clusterId != null && clusterId != -1) {
+            Set<RequestUpdateEvent.HostRoleCommand> hostRoleCommands = new HashSet<>();
+            hostRoleCommands.add(new RequestUpdateEvent.HostRoleCommand(hostRoleCommand.getTaskId(),
+                hostRoleCommand.getRequestId(),
+                hostRoleCommand.getStatus(),
+                hostRoleCommand.getHostName()));
+            requestsToPublish.add(new RequestUpdateEvent(hostRoleCommand.getRequestId(),
+                activeRequestMap.get(hostRoleCommand.getRequestId()).getStatus(), hostRoleCommands));
+          } else {
+            LOG.debug("No STOMP request update event was fired for host component status change due no cluster related, " +
+                    "request id: {}, role: {}, role command: {}, host: {}, task id: {}, old state: {}, new state: {}",
+                hostRoleCommand.getRequestId(),
+                hostRoleCommand.getRole(),
+                hostRoleCommand.getRoleCommand(),
+                hostRoleCommand.getHostName(),
+                hostRoleCommand.getTaskId(),
+                activeTasksMap.get(reportedTaskId).getStatus(),
+                hostRoleCommand.getStatus());
+          }
         }
       }
     }
@@ -164,6 +194,10 @@ public class TaskStatusListener {
     }
     for (RequestUpdateEvent requestToPublish : requestsToPublish) {
       STOMPUpdatePublisher.publish(requestToPublish);
+    }
+    for (NamedTaskUpdateEvent namedTaskUpdateEvent : namedTasksToPublish) {
+      LOG.info(String.format("NamedTaskUpdateEvent with id %s will be send", namedTaskUpdateEvent.getId()));
+      STOMPUpdatePublisher.publish(namedTaskUpdateEvent);
     }
   }
 
@@ -264,7 +298,8 @@ public class TaskStatusListener {
       // Request entity of the hostrolecommand should be persisted before publishing task create event
       assert requestEntity != null;
       Set<StageEntityPK> stageEntityPKs =  Sets.newHashSet(stageEntityPK);
-      ActiveRequest request = new ActiveRequest(requestEntity.getStatus(),requestEntity.getDisplayStatus(), stageEntityPKs);
+      ActiveRequest request = new ActiveRequest(requestEntity.getStatus(),requestEntity.getDisplayStatus(),
+          stageEntityPKs, requestEntity.getClusterId());
       activeRequestMap.put(requestId, request);
     }
   }
@@ -524,11 +559,14 @@ public class TaskStatusListener {
     private HostRoleStatus status;
     private HostRoleStatus displayStatus;
     private Set <StageEntityPK> stageEntityPks;
+    private Long clusterId;
 
-    public ActiveRequest(HostRoleStatus status, HostRoleStatus displayStatus, Set<StageEntityPK> stageEntityPks) {
+    public ActiveRequest(HostRoleStatus status, HostRoleStatus displayStatus, Set<StageEntityPK> stageEntityPks,
+                         Long clusterId) {
       this.status = status;
       this.displayStatus = displayStatus;
       this.stageEntityPks = stageEntityPks;
+      this.clusterId = clusterId;
     }
 
     public HostRoleStatus getStatus() {
@@ -559,6 +597,13 @@ public class TaskStatusListener {
       stageEntityPks.add(stageEntityPK);
     }
 
+    public Long getClusterId() {
+      return clusterId;
+    }
+
+    public void setClusterId(Long clusterId) {
+      this.clusterId = clusterId;
+    }
   }
 
   /**

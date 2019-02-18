@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -43,6 +44,7 @@ import org.apache.ambari.server.RoleCommand;
 import org.apache.ambari.server.actionmanager.HostRoleCommand;
 import org.apache.ambari.server.actionmanager.HostRoleCommandFactory;
 import org.apache.ambari.server.actionmanager.HostRoleStatus;
+import org.apache.ambari.server.agent.stomp.HostLevelParamsHolder;
 import org.apache.ambari.server.controller.AmbariManagementController;
 import org.apache.ambari.server.controller.AmbariServer;
 import org.apache.ambari.server.controller.ClusterRequest;
@@ -80,11 +82,11 @@ import org.apache.ambari.server.state.ConfigFactory;
 import org.apache.ambari.server.state.ConfigHelper;
 import org.apache.ambari.server.state.DesiredConfig;
 import org.apache.ambari.server.state.Host;
-import org.apache.ambari.server.state.RepositoryType;
 import org.apache.ambari.server.state.SecurityType;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.configgroup.ConfigGroup;
 import org.apache.ambari.server.utils.RetryHelper;
+import org.apache.ambari.spi.RepositoryType;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -123,6 +125,9 @@ public class AmbariContext {
    */
   @Inject
   private Provider<ConfigHelper> configHelper;
+
+  @Inject
+  HostLevelParamsHolder hostLevelParamsHolder;
 
   private static AmbariManagementController controller;
   private static ClusterController clusterController;
@@ -261,23 +266,35 @@ public class AmbariContext {
         repoVersion = stackRepoVersions.get(0);
         LOG.warn("Cluster is being provisioned using the single matching repository version {}", repoVersion.getVersion());
       }
-    } else if (null != repoVersionId){
-      repoVersion = repositoryVersionDAO.findByPK(repoVersionId);
-
-      if (null == repoVersion) {
-        throw new IllegalArgumentException(String.format(
-          "Could not identify repository version with repository version id %s for installing services. "
-            + "Specify a valid repository version id with '%s'",
-          repoVersionId, ProvisionClusterRequest.REPO_VERSION_ID_PROPERTY));
-      }
     } else {
-      repoVersion = repositoryVersionDAO.findByStackAndVersion(stackId, repoVersionString);
+      if (null != repoVersionId) {
+        repoVersion = repositoryVersionDAO.findByPK(repoVersionId);
 
-      if (null == repoVersion) {
-        throw new IllegalArgumentException(String.format(
-          "Could not identify repository version with stack %s and version %s for installing services. "
-            + "Specify a valid version with '%s'",
-          stackId, repoVersionString, ProvisionClusterRequest.REPO_VERSION_PROPERTY));
+        if (null == repoVersion) {
+          throw new IllegalArgumentException(String.format(
+            "Could not identify repository version with repository version id %s for installing services. "
+              + "Specify a valid repository version id with '%s'",
+            repoVersionId, ProvisionClusterRequest.REPO_VERSION_ID_PROPERTY));
+        }
+      } else {
+        repoVersion = repositoryVersionDAO.findByStackAndVersion(stackId, repoVersionString);
+
+        if (null == repoVersion) {
+          throw new IllegalArgumentException(String.format(
+            "Could not identify repository version with stack %s and version %s for installing services. "
+              + "Specify a valid version with '%s'",
+            stackId, repoVersionString, ProvisionClusterRequest.REPO_VERSION_PROPERTY));
+        }
+      }
+
+      if (!Objects.equals(repoVersion.getStackId(), stackId)) {
+        String repoVersionPair = repoVersionId != null
+          ? String.format("'%s' = %d", ProvisionClusterRequest.REPO_VERSION_ID_PROPERTY, repoVersionId)
+          : String.format("'%s' = '%s'", ProvisionClusterRequest.REPO_VERSION_PROPERTY, repoVersionString);
+        String msg = String.format(
+          "The stack specified in the blueprint (%s) and the repository version (%s for %s) should match",
+          stackId, repoVersion.getStackId(), repoVersionPair);
+        throw new IllegalArgumentException(msg);
       }
     }
 
@@ -415,10 +432,11 @@ public class AmbariContext {
       RetryHelper.executeWithRetry(new Callable<Object>() {
         @Override
         public Object call() throws Exception {
-          getController().createHostComponents(requests);
+          getController().createHostComponents(requests, true);
           return null;
         }
       });
+      hostLevelParamsHolder.updateData(hostLevelParamsHolder.getCurrentData(host.getHostId()));
     } catch (AmbariException e) {
       LOG.error("Unable to create host component resource for host {}", hostName, e);
       throw new RuntimeException(String.format("Unable to create host component resource for host '%s': %s",
@@ -528,13 +546,22 @@ public class AmbariContext {
       RetryHelper.executeWithRetry(new Callable<Object>() {
         @Override
         public Object call() throws Exception {
-          getController().updateClusters(Collections.singleton(clusterRequest), null);
+          getController().updateClusters(Collections.singleton(clusterRequest), null, false);
           return null;
         }
       });
     } catch (AmbariException e) {
       LOG.error("Failed to set configurations on cluster: ", e);
       throw new RuntimeException("Failed to set configurations on cluster: " + e, e);
+    }
+  }
+
+  public void notifyAgentsAboutConfigsChanges(String clusterName) {
+    try {
+      configHelper.get().updateAgentConfigs(Collections.singleton(clusterName));
+    } catch (AmbariException e) {
+      LOG.error("Failed to set send agent updates: ", e);
+      throw new RuntimeException("Failed to set send agent updates: " + e, e);
     }
   }
 
@@ -557,7 +584,7 @@ public class AmbariContext {
       for (String actualConfigType : updatedConfigTypes) {
         // get the actual cluster config for comparison
         DesiredConfig actualConfig = cluster.getDesiredConfigs().get(actualConfigType);
-        if (actualConfig == null && actualConfigType.equals("core-site")) {
+        if (actualConfig == null || actualConfigType.equals("core-site")) {
           continue;
         }
         if (!actualConfig.getTag().equals(TopologyManager.TOPOLOGY_RESOLVED_TAG)) {

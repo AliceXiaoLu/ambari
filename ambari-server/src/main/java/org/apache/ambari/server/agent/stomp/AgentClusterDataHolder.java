@@ -19,8 +19,6 @@
 package org.apache.ambari.server.agent.stomp;
 
 import java.util.Objects;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import javax.inject.Inject;
 
@@ -38,19 +36,11 @@ public abstract class AgentClusterDataHolder<T extends STOMPEvent & Hashable> ex
   @Inject
   protected STOMPUpdatePublisher STOMPUpdatePublisher;
 
-  private T data;
-
-  //TODO perhaps need optimization
-  private Lock lock = new ReentrantLock();
+  private volatile T data;
 
   public T getUpdateIfChanged(String agentHash) throws AmbariException {
-    try {
-      lock.lock();
-      initializeDataIfNeeded(true);
-      return !Objects.equals(agentHash, data.getHash()) ? data : getEmptyData();
-    } finally {
-      lock.unlock();
-    }
+    initializeDataIfNeeded(true);
+    return !Objects.equals(agentHash, data.getHash()) ? data : getEmptyData();
   }
 
   /**
@@ -70,30 +60,34 @@ public abstract class AgentClusterDataHolder<T extends STOMPEvent & Hashable> ex
    * @return true if the update introduced any change
    */
   public boolean updateData(T update) throws AmbariException {
-    initializeDataIfNeeded(false);
-    boolean changed = handleUpdate(update);
-    if (changed) {
-      regenerateHash();
-      update.setHash(getData().getHash());
-      STOMPUpdatePublisher.publish(update);
-    }
-    return changed;
-  }
-
-  protected final void regenerateHash() {
+    updateLock.lock();
     try {
-      lock.lock();
-      regenerateDataIdentifiers(data);
+      initializeDataIfNeeded(true);
+      boolean changed = handleUpdate(update);
+      if (changed) {
+        regenerateDataIdentifiers(data);
+        update.setHash(getData().getHash());
+        STOMPUpdatePublisher.publish(update);
+      }
+      return changed;
     } finally {
-      lock.unlock();
+      updateLock.unlock();
     }
   }
 
   protected final void initializeDataIfNeeded(boolean regenerateHash) throws AmbariException {
     if (data == null) {
-      data = getCurrentData();
-      if (regenerateHash) {
-        regenerateHash();
+      updateLock.lock();
+      try {
+        if (data == null) {
+          T localData = getCurrentData();
+          if (regenerateHash) {
+            regenerateDataIdentifiers(localData);
+          }
+          data = localData;
+        }
+      } finally {
+        updateLock.unlock();
       }
     }
   }

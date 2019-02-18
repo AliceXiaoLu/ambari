@@ -270,10 +270,6 @@ public class JMXPropertyProviderTest {
     Assert.assertEquals(136314880, resource.getPropertyValue(PropertyHelper.getPropertyId("metrics/jvm", "NonHeapMemoryMax")));
     Assert.assertEquals(21933376, resource.getPropertyValue(PropertyHelper.getPropertyId("metrics/jvm", "NonHeapMemoryUsed")));
 
-
-    // only ask for specific properties
-    Set<String> properties = new HashSet<>();
-
     // hbase master
     resource = new ResourceImpl(Resource.Type.HostComponent);
     resource.setProperty(CLUSTER_NAME_PROPERTY_ID, "c1");
@@ -282,7 +278,7 @@ public class JMXPropertyProviderTest {
     resource.setProperty(HOST_COMPONENT_STATE_PROPERTY_ID, "STARTED");
 
     // only ask for specific properties
-    properties = new HashSet<>();
+    Set<String> properties = new HashSet<>();
     properties.add(PropertyHelper.getPropertyId("metrics/jvm", "HeapMemoryMax"));
     properties.add(PropertyHelper.getPropertyId("metrics/jvm", "HeapMemoryUsed"));
     properties.add(PropertyHelper.getPropertyId("metrics/jvm", "NonHeapMemoryMax"));
@@ -643,7 +639,7 @@ public class JMXPropertyProviderTest {
       } else if (componentName.equals("DATANODE")) {
         return "50075";
       } else if (componentName.equals("HBASE_MASTER")) {
-        if(clusterName == "c2") {
+        if(clusterName.equals("c2")) {
           return "60011";
         } else {
           // Caters the case where 'clusterName' is null or
@@ -695,6 +691,11 @@ public class JMXPropertyProviderTest {
 
     @Override
     public boolean isCollectorComponentLive(String clusterName, MetricsService service) throws SystemException {
+      return false;
+    }
+
+    @Override
+    public boolean isCollectorHostExternal(String clusterName) {
       return false;
     }
   }

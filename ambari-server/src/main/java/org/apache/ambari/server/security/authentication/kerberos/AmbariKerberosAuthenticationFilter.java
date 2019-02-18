@@ -32,6 +32,10 @@ import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.security.authentication.AmbariAuthenticationEventHandler;
 import org.apache.ambari.server.security.authentication.AmbariAuthenticationException;
 import org.apache.ambari.server.security.authentication.AmbariAuthenticationFilter;
+import org.apache.ambari.server.security.authentication.tproxy.TrustedProxyAuthenticationDetailsSource;
+import org.apache.ambari.server.utils.RequestUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.core.Authentication;
@@ -51,6 +55,8 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(2)
 public class AmbariKerberosAuthenticationFilter extends SpnegoAuthenticationProcessingFilter implements AmbariAuthenticationFilter {
+
+  private static final Logger LOG = LoggerFactory.getLogger(AmbariKerberosAuthenticationFilter.class);
 
   /**
    * Ambari authentication event handler
@@ -83,7 +89,7 @@ public class AmbariKerberosAuthenticationFilter extends SpnegoAuthenticationProc
 
     kerberosAuthenticationEnabled = (kerberosAuthenticationProperties != null) && kerberosAuthenticationProperties.isKerberosAuthenticationEnabled();
 
-    if(eventHandler == null) {
+    if (eventHandler == null) {
       throw new IllegalArgumentException("The AmbariAuthenticationEventHandler must not be null");
     }
 
@@ -91,18 +97,18 @@ public class AmbariKerberosAuthenticationFilter extends SpnegoAuthenticationProc
 
     setAuthenticationManager(authenticationManager);
 
+    setAuthenticationDetailsSource(new TrustedProxyAuthenticationDetailsSource());
+
     setFailureHandler(new AuthenticationFailureHandler() {
       @Override
       public void onAuthenticationFailure(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, AuthenticationException e) throws IOException, ServletException {
-        if (eventHandler != null) {
-          AmbariAuthenticationException cause;
-          if (e instanceof AmbariAuthenticationException) {
-            cause = (AmbariAuthenticationException) e;
-          } else {
-            cause = new AmbariAuthenticationException(null, e.getLocalizedMessage(), false, e);
-          }
-          eventHandler.onUnsuccessfulAuthentication(AmbariKerberosAuthenticationFilter.this, httpServletRequest, httpServletResponse, cause);
+        AmbariAuthenticationException cause;
+        if (e instanceof AmbariAuthenticationException) {
+          cause = (AmbariAuthenticationException) e;
+        } else {
+          cause = new AmbariAuthenticationException(null, e.getLocalizedMessage(), false, e);
         }
+        eventHandler.onUnsuccessfulAuthentication(AmbariKerberosAuthenticationFilter.this, httpServletRequest, httpServletResponse, cause);
 
         entryPoint.commence(httpServletRequest, httpServletResponse, e);
       }
@@ -111,9 +117,7 @@ public class AmbariKerberosAuthenticationFilter extends SpnegoAuthenticationProc
     setSuccessHandler(new AuthenticationSuccessHandler() {
       @Override
       public void onAuthenticationSuccess(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, Authentication authentication) throws IOException, ServletException {
-        if (eventHandler != null) {
-          eventHandler.onSuccessfulAuthentication(AmbariKerberosAuthenticationFilter.this, httpServletRequest, httpServletResponse, authentication);
-        }
+        eventHandler.onSuccessfulAuthentication(AmbariKerberosAuthenticationFilter.this, httpServletRequest, httpServletResponse, authentication);
       }
     });
   }
@@ -131,6 +135,10 @@ public class AmbariKerberosAuthenticationFilter extends SpnegoAuthenticationProc
    */
   @Override
   public boolean shouldApply(HttpServletRequest httpServletRequest) {
+    if (LOG.isDebugEnabled()) {
+      RequestUtils.logRequestHeadersAndQueryParams(httpServletRequest, LOG);
+    }
+
     if (kerberosAuthenticationEnabled) {
       String header = httpServletRequest.getHeader("Authorization");
       return (header != null) && (header.startsWith("Negotiate ") || header.startsWith("Kerberos "));

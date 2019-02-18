@@ -21,23 +21,32 @@ package org.apache.ambari.server.agent.stomp;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.ambari.server.agent.stomp.dto.HashAndTimestampIgnoreMixIn;
+import org.apache.ambari.server.agent.stomp.dto.HashIgnoreMixIn;
 import org.apache.ambari.server.agent.stomp.dto.Hashable;
+import org.apache.ambari.server.events.AgentConfigsUpdateEvent;
 import org.apache.commons.lang.StringUtils;
 
-import com.google.gson.Gson;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Is used to hash generating for event
  * @param <T> event with hash to control version
  */
 public abstract class AgentDataHolder<T extends Hashable> {
-  private final String salt = "";
+  protected final ReentrantLock updateLock = new ReentrantLock();
+  private final static ObjectMapper MAPPER = new ObjectMapper();
+  static {
+    MAPPER.addMixIn(Hashable.class, HashIgnoreMixIn.class);
+    MAPPER.addMixIn(AgentConfigsUpdateEvent.class, HashAndTimestampIgnoreMixIn.class);
+  }
 
   protected abstract T getEmptyData();
 
   protected void regenerateDataIdentifiers(T data) {
-    data.setHash(null);
     data.setHash(getHash(data));
   }
 
@@ -46,7 +55,16 @@ public abstract class AgentDataHolder<T extends Hashable> {
   }
 
   protected String getHash(T data) {
-    String json = new Gson().toJson(data);
+    return getHash(data, "");
+  }
+
+  protected String getHash(T data, String salt) {
+    String json = null;
+    try {
+      json = MAPPER.writeValueAsString(data);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Error during mapping message to calculate hash", e);
+    }
     String generatedPassword = null;
     try {
       MessageDigest md = MessageDigest.getInstance("SHA-512");

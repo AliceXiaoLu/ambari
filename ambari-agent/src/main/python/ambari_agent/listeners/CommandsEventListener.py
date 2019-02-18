@@ -30,8 +30,9 @@ class CommandsEventListener(EventListener):
   """
   Listener of Constants.CONFIGURATIONS_TOPIC events from server.
   """
-  def __init__(self, action_queue):
-    self.action_queue = action_queue
+  def __init__(self, initializer_module):
+    super(CommandsEventListener, self).__init__(initializer_module)
+    self.action_queue = initializer_module.action_queue
 
   def on_event(self, headers, message):
     """
@@ -73,6 +74,10 @@ class CommandsEventListener(EventListener):
             command['repositoryFile'] = '...'
           if 'commandParams' in command:
             command['commandParams'] = '...'
+          if 'clusterHostInfo' in command:
+            command['clusterHostInfo'] = '...'
+          if 'componentVersionMap' in command:
+            command['componentVersionMap'] = '...'
     except KeyError:
       pass
       

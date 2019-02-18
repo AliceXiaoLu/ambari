@@ -139,6 +139,25 @@ App.MainAdminStackVersionsView = Em.View.extend({
    * @type {Em.Array}
    */
   stackVersions: App.StackVersion.find(),
+  
+  /**
+   * @type {?Em.Object}
+   */
+  stackVersionError: function() {
+    const errorStack = this.get('repoVersions')
+    .filterProperty('isVisible')
+    .filterProperty('status', 'OUT_OF_SYNC')
+    .findProperty('isStandard');
+    if (errorStack) {
+      return Em.Object.create({
+        repoId: errorStack.get('id'),
+        title: Em.I18n.t('admin.stackVersions.version.errors.outOfSync.title'),
+        description: Em.I18n.t('admin.stackVersions.version.errors.outOfSync.desc'),
+        stack: errorStack.get('displayNameFull')
+      })
+    }
+    return null;
+  }.property('repoVersions.@each.status'),
 
   /**
    * filter versions by category
@@ -211,7 +230,7 @@ App.MainAdminStackVersionsView = Em.View.extend({
             }),
             sortedMappedVersions = mappedVersions.sort(),
             latestVersion = sortedMappedVersions[sortedMappedVersions.length-1].replace(/[^\d.-]/g, '');
-            window.location.replace(App.appURLRoot + 'views/ADMIN_VIEW/' + latestVersion + '/INSTANCE/#/stackVersions');
+            window.location.replace(App.appURLRoot + 'views/ADMIN_VIEW/' + latestVersion + '/INSTANCE/#!/stackVersions');
         }
       });
     },

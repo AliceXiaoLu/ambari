@@ -53,10 +53,10 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
     live_data_nodes: 'live_data_nodes',
     dead_data_nodes: 'dead_data_nodes',
     decommission_data_nodes: 'decommission_data_nodes',
-    capacity_used_values: 'capacity_used_values',
-    capacity_total_values: 'capacity_total_values',
-    capacity_remaining_values: 'capacity_remaining_values',
-    capacity_non_dfs_used_values: 'capacity_non_dfs_used_values',
+    capacity_used: 'nameNodeComponent.host_components[0].metrics.dfs.FSNamesystem.CapacityUsed',
+    capacity_total: 'nameNodeComponent.host_components[0].metrics.dfs.FSNamesystem.CapacityTotal',
+    capacity_remaining: 'nameNodeComponent.host_components[0].metrics.dfs.FSNamesystem.CapacityRemaining',
+    capacity_non_dfs_used: 'nameNodeComponent.host_components[0].metrics.dfs.FSNamesystem.CapacityNonDFSUsed',
     dfs_total_blocks_values: 'dfs_total_blocks_values',
     dfs_corrupt_blocks_values: 'dfs_corrupt_blocks_values',
     dfs_missing_blocks_values: 'dfs_missing_blocks_values',
@@ -76,10 +76,6 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
   activeNameNodeConfig: {
     name_node_start_time_values: 'metrics.runtime.StartTime',
     jvm_memory_heap_used_values: 'metrics.jvm.HeapMemoryUsed',
-    capacity_used_values: 'metrics.dfs.FSNamesystem.CapacityUsed',
-    capacity_total_values: 'metrics.dfs.FSNamesystem.CapacityTotal',
-    capacity_remaining_values: 'metrics.dfs.FSNamesystem.CapacityRemaining',
-    capacity_non_dfs_used_values: 'metrics.dfs.FSNamesystem.CapacityNonDFSUsed',
     jvm_memory_heap_max_values: 'metrics.jvm.HeapMemoryMax',
     dfs_total_blocks_values: 'metrics.dfs.FSNamesystem.BlocksTotal',
     dfs_corrupt_blocks_values: 'metrics.dfs.FSNamesystem.CorruptBlocks',
@@ -207,7 +203,9 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
    * @type {Array}
    * @const
    */
-  ADVANCED_COMPONENTS: ['SECONDARY_NAMENODE', 'RESOURCEMANAGER', 'NAMENODE', 'HBASE_MASTER', 'RESOURCEMANAGER'],
+  ADVANCED_COMPONENTS: ['SECONDARY_NAMENODE', 'RESOURCEMANAGER', 'NAMENODE', 'HBASE_MASTER', 'RESOURCEMANAGER', 'HIVE_SERVER_INTERACTIVE'],
+
+  hostNameIpMap: {},
 
   map: function (json) {
     console.time('App.serviceMetricsMapper execution time');
@@ -222,6 +220,7 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
       var result = [];
       var advancedHostComponents = [];
       var hostComponentIdsMap = {};
+      var hiveInteractiveServers = [];
 
       /**
        * services contains constructed service-components structure from components array
@@ -244,6 +243,9 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
           var comp = this.parseIt(host_component, this.config3);
           comp.id = id;
           comp.service_id = serviceName;
+          if (comp.component_name === 'HIVE_SERVER_INTERACTIVE') {
+            hiveInteractiveServers.push(comp);
+          }
           hostComponents.push(comp);
           if (this.get('ADVANCED_COMPONENTS').contains(comp.component_name)) {
             advancedHostComponents.push(comp);
@@ -275,6 +277,9 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
 
       App.store.safeLoadMany(this.get('model3'), hostComponents);
 
+      if (hiveInteractiveServers.length > 1) {
+        this.loadInteractiveServerStatuses(hiveInteractiveServers);
+      }
       //parse service metrics from components
       services.forEach(function (item) {
         hostComponents.filterProperty('service_id', item.ServiceInfo.service_name).mapProperty('id').forEach(function (hostComponent) {
@@ -305,6 +310,64 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
       }
     }
     console.timeEnd('App.serviceMetricsMapper execution time');
+  },
+
+  loadInteractiveServerStatuses: function (hiveInteractiveServers) {
+    var self = this;
+    App.router.get('configurationController').getCurrentConfigsBySites(['hive-site', 'hive-interactive-site']).done(function (configs) {
+      var hiveWebUiPort = configs.findProperty('type', 'hive-interactive-site').properties['hive.server2.webui.port'];
+      var hostNames = hiveInteractiveServers.mapProperty('host_name');
+      var notDefinedHostIp = hostNames.find(function (hostName) {
+        return !self.get('hostNameIpMap')[hostName];
+      });
+      if (notDefinedHostIp) {
+        self.getHostNameIpMap(hostNames).done(function () {
+          self.getHiveServersInteractiveStatus(hiveInteractiveServers, hiveWebUiPort);
+        });
+      } else {
+        self.getHiveServersInteractiveStatus(hiveInteractiveServers, hiveWebUiPort);
+      }
+    });
+  },
+
+  getHostNameIpMap: function (hostNames) {
+    var self = this;
+    return App.ajax.send({
+      name: 'hosts.ips',
+      data: {
+        hostNames: hostNames
+      },
+      sender: self
+    }).success(function (data) {
+      data.items.forEach(function(hostData) {
+        var ip = hostData.Hosts.ip;
+        var hostName = hostData.Hosts.host_name;
+        self.get('hostNameIpMap')[hostName] = ip;
+      })
+    });
+  },
+
+  getHiveServersInteractiveStatus: function(hiveInteractiveServers, hiveWebUiPort) {
+    var self = this;
+    hiveInteractiveServers.forEach(function (hiveInteractiveServer) {
+      App.ajax.send({
+        name: 'hiveServerInteractive.getStatus',
+        data: {
+          hsiHost: self.hostNameIpMap[hiveInteractiveServer.host_name],
+          port: hiveWebUiPort
+        },
+        sender: self
+      }).success(function (isActive) {
+
+        var advancedName = Em.I18n.t('quick.links.label.' +  (isActive ? 'active': 'standby')) + ' ' + hiveInteractiveServer.display_name;
+        var hiveInteractiveServerComponent = App.HostComponent.find().find(function (component) {
+          return component.get('hostName') === hiveInteractiveServer.host_name && component.get('componentName') === 'HIVE_SERVER_INTERACTIVE';
+        });
+        if (hiveInteractiveServerComponent){
+          hiveInteractiveServerComponent.set('displayNameAdvanced', advancedName);
+        }
+      });
+    });
   },
 
   /**
@@ -425,6 +488,13 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
             case 'STANDBY':
               hostComponent.display_name_advanced = Em.I18n.t('dashboard.services.yarn.resourceManager.standby');
               break;
+          }
+        } else if (hostComponent.component_name === 'HIVE_SERVER_INTERACTIVE') {
+          var hiveInteractiveServerComponent = App.HostComponent.find().find(function (component) {
+            return component.get('hostName') === hostComponent.host_name && component.get('componentName') === 'HIVE_SERVER_INTERACTIVE';
+          });
+          if (hiveInteractiveServerComponent) {
+            hostComponent.display_name_advanced = hiveInteractiveServerComponent.get('displayNameAdvanced');
           }
         }
         if (service) {
@@ -667,8 +737,8 @@ App.serviceMetricsMapper = App.QuickDataMapper.create({
           var activeHostComponentIndex = component.host_components.indexOf(activeMaster);
           self.setActiveAsFirstHostComponent(component, activeHostComponentIndex);
           var regionsArray = null;
-          if (!Em.none(Em.get(component.host_components[0], 'metrics.master.AssignmentManger.ritCount'))) {
-            regionsArray = App.parseJSON(component.host_components[0].metrics.master.AssignmentManger.ritCount);
+          if (!Em.none(Em.get(component.host_components[0], 'metrics.master.AssignmentManager.ritCount'))) {
+            regionsArray = App.parseJSON(component.host_components[0].metrics.master.AssignmentManager.ritCount);
           }
           //regions_in_transition can have various type of value: null, array or int
           if (Array.isArray(regionsArray)) {

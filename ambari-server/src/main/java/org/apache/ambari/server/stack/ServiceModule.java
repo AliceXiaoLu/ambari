@@ -205,6 +205,9 @@ public class ServiceModule extends BaseModule<ServiceModule, ServiceInfo> implem
     if (serviceInfo.getDisplayName() == null) {
       serviceInfo.setDisplayName(parent.getDisplayName());
     }
+    if (serviceInfo.getServiceType() == null) {
+      serviceInfo.setServiceType(parent.getServiceType());
+    }
     if (serviceInfo.getServiceAdvisorType() == null) {
       ServiceInfo.ServiceAdvisorType serviceAdvisorType = parent.getServiceAdvisorType();
       serviceInfo.setServiceAdvisorType(serviceAdvisorType == null ? ServiceInfo.ServiceAdvisorType.PYTHON : serviceAdvisorType);
@@ -295,6 +298,10 @@ public class ServiceModule extends BaseModule<ServiceModule, ServiceInfo> implem
 
     if (serviceInfo.isSelectionEmpty()) {
       serviceInfo.setSelection(parent.getSelection());
+    }
+
+    if (serviceInfo.isMaintainerEmpty()) {
+      serviceInfo.setMaintainer(parent.getMaintainer());
     }
 
     if(null == serviceInfo.getSupportDeleteViaUIField()){

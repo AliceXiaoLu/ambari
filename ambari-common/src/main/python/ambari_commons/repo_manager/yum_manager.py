@@ -63,7 +63,7 @@ class YumManagerProperties(GenericManagerProperties):
   }
 
   verify_dependency_cmd = [repo_manager_bin, '-d', '0', '-e', '0', 'check', 'dependencies']
-  installed_package_version_command = [pkg_manager_bin, "-q", "--queryformat", "%{{version}}-%{{release}}"]
+  installed_package_version_command = [pkg_manager_bin, "-q", "--queryformat", "%{version}-%{release}\n"]
 
   remove_without_dependencies_cmd = ['rpm', '-e', '--nodeps']
 
@@ -208,7 +208,7 @@ class YumManager(GenericManager):
 
     if not name:
       raise ValueError("Installation command was executed with no package name")
-    elif context.is_upgrade or context.use_repos or not self._check_existence(name):
+    elif not self._check_existence(name) or context.action_force:
       cmd = self.properties.install_cmd[context.log_output]
       if context.use_repos:
         enable_repo_option = '--enablerepo=' + ",".join(sorted(context.use_repos.keys()))
@@ -273,6 +273,8 @@ class YumManager(GenericManager):
     yum in inconsistant state (locked, used, having invalid repo). Once packages are installed
     we should not rely on that.
     """
+    if not name:
+      raise ValueError("Package name can't be empty")
 
     if os.geteuid() == 0:
       return self.yum_check_package_available(name)
@@ -356,7 +358,7 @@ class YumManager(GenericManager):
 
   def get_installed_package_version(self, package_name):
     version = None
-    cmd = list(self.properties.installed_package_version_command) + ["\"{0}\"".format(package_name)]
+    cmd = list(self.properties.installed_package_version_command) + [package_name]
 
     result = shell.subprocess_executor(cmd)
 
@@ -448,6 +450,9 @@ Ambari has detected that there are incomplete Yum transactions on this host. Thi
 - Identify the pending transactions with the command 'yum history list <packages failed>'
 - Revert each pending transaction with the command 'yum history undo'
 - Flush the transaction log with 'yum-complete-transaction --cleanup-only'
+
+If the issue persists, old transaction files may be the cause.
+Please delete them from /var/lib/yum/transaction*
 """
 
     for line in help_msg.split("\n"):

@@ -18,48 +18,48 @@ See the License for the specific language governing permissions and
 limitations under the License.
 '''
 
+import textwrap
+import logging
+import logging.config
+import logging.handlers
 import optparse
-import sys
 import os
 import signal
-import logging
-import logging.handlers
-import logging.config
-
-from optparse import OptionValueError
+import sys
 from ambari_commons.exceptions import FatalException, NonFatalException
 from ambari_commons.logging_utils import set_verbose, set_silent, \
   print_info_msg, print_warning_msg, print_error_msg, set_debug_mode_from_options
 from ambari_commons.os_check import OSConst
 from ambari_commons.os_family_impl import OsFamilyFuncImpl, OsFamilyImpl
 from ambari_commons.os_utils import remove_file
+from optparse import OptionValueError
+
 from ambari_server.BackupRestore import main as BackupRestore_main
+from ambari_server.checkDatabase import check_database
+from ambari_server.dbCleanup import db_purge
 from ambari_server.dbConfiguration import DATABASE_NAMES, LINUX_DBMS_KEYS_LIST
+from ambari_server.enableStack import enable_stack_version
+from ambari_server.hostUpdate import update_host_names
+from ambari_server.kerberos_setup import setup_kerberos
 from ambari_server.serverConfiguration import configDefaults, get_ambari_properties, PID_NAME
-from ambari_server.serverUtils import is_server_runing, refresh_stack_hash, wait_for_server_to_stop
-from ambari_server.serverSetup import reset, setup, setup_jce_policy
+from ambari_server.serverSetup import reset, setup, setup_jce_policy, setup_jdbc
 from ambari_server.serverUpgrade import upgrade, set_current
+from ambari_server.serverUtils import is_server_runing, refresh_stack_hash, wait_for_server_to_stop
+from ambari_server.setupActions import BACKUP_ACTION, LDAP_SETUP_ACTION, LDAP_SYNC_ACTION, PSTART_ACTION, \
+  REFRESH_STACK_HASH_ACTION, RESET_ACTION, RESTORE_ACTION, UPDATE_HOST_NAMES_ACTION, CHECK_DATABASE_ACTION, \
+  SETUP_ACTION, SETUP_SECURITY_ACTION, RESTART_ACTION, START_ACTION, STATUS_ACTION, STOP_ACTION, UPGRADE_ACTION, \
+  SETUP_JCE_ACTION, SETUP_JDBC_ACTION, SET_CURRENT_ACTION, ENABLE_STACK_ACTION, SETUP_SSO_ACTION, \
+  DB_PURGE_ACTION, INSTALL_MPACK_ACTION, UNINSTALL_MPACK_ACTION, UPGRADE_MPACK_ACTION, PAM_SETUP_ACTION, \
+  MIGRATE_LDAP_PAM_ACTION, KERBEROS_SETUP_ACTION, SETUP_TPROXY_ACTION
 from ambari_server.setupHttps import setup_https, setup_truststore
 from ambari_server.setupMpacks import install_mpack, uninstall_mpack, upgrade_mpack, STACK_DEFINITIONS_RESOURCE_NAME, \
   SERVICE_DEFINITIONS_RESOURCE_NAME, MPACKS_RESOURCE_NAME
+from ambari_server.setupSecurity import setup_ldap, sync_ldap, setup_sensitive_data_encryption, setup_ambari_krb5_jaas, setup_pam, \
+  migrate_ldap_pam, LDAP_TYPES
 from ambari_server.setupSso import setup_sso
-from ambari_server.dbCleanup import db_purge
-from ambari_server.hostUpdate import update_host_names
-from ambari_server.checkDatabase import check_database
-from ambari_server.enableStack import enable_stack_version
-
-from ambari_server.setupActions import BACKUP_ACTION, LDAP_SETUP_ACTION, LDAP_SYNC_ACTION, PSTART_ACTION, \
-  REFRESH_STACK_HASH_ACTION, RESET_ACTION, RESTORE_ACTION, UPDATE_HOST_NAMES_ACTION, CHECK_DATABASE_ACTION, \
-  SETUP_ACTION, SETUP_SECURITY_ACTION,START_ACTION, STATUS_ACTION, STOP_ACTION, RESTART_ACTION, UPGRADE_ACTION, \
-  SETUP_JCE_ACTION, SET_CURRENT_ACTION, START_ACTION, STATUS_ACTION, STOP_ACTION, UPGRADE_ACTION, \
-  SETUP_JCE_ACTION, SET_CURRENT_ACTION, ENABLE_STACK_ACTION, SETUP_SSO_ACTION, \
-  DB_PURGE_ACTION, INSTALL_MPACK_ACTION, UNINSTALL_MPACK_ACTION, UPGRADE_MPACK_ACTION, PAM_SETUP_ACTION, MIGRATE_LDAP_PAM_ACTION, KERBEROS_SETUP_ACTION
-from ambari_server.setupSecurity import setup_ldap, sync_ldap, setup_master_key, setup_ambari_krb5_jaas, setup_pam, migrate_ldap_pam
+from ambari_server.setupTrustedProxy import setup_trusted_proxy
 from ambari_server.userInput import get_validated_string_input
-from ambari_server.kerberos_setup import setup_kerberos
-
 from ambari_server_main import server_process_main
-from ambari_server.ambariPath import AmbariPath
 
 logger = logging.getLogger()
 
@@ -253,7 +253,7 @@ def refresh_stack_hash_action():
 def create_setup_security_actions(args):
   action_list = [
       ['setup-https', 'Enable HTTPS for Ambari server.', UserActionRestart(setup_https, args)],
-      ['encrypt-passwords', 'Encrypt passwords stored in ambari.properties file.', UserAction(setup_master_key, args)],
+      ['encrypt-passwords', 'Encrypt passwords managed by Ambari.', UserAction(setup_sensitive_data_encryption, args)],
       ['setup-kerberos-jaas', 'Setup Ambari kerberos JAAS configuration.', UserAction(setup_ambari_krb5_jaas, args)],
       ['setup-truststore', 'Setup truststore.', UserActionRestart(setup_truststore, args)],
       ['import-certificate', 'Import certificate to truststore.', UserActionRestart(setup_truststore, True, args)],
@@ -264,7 +264,7 @@ def create_setup_security_actions(args):
 def create_setup_security_actions(args):
   action_list = [
       ['setup-https', 'Enable HTTPS for Ambari server.', UserActionRestart(setup_https, args)],
-      ['encrypt-passwords', 'Encrypt passwords stored in ambari.properties file.', UserAction(setup_master_key, args)],
+      ['encrypt-passwords', 'Encrypt passwords managed by Ambari.', UserAction(setup_sensitive_data_encryption, args)],
       ['setup-kerberos-jaas', 'Setup Ambari kerberos JAAS configuration.', UserAction(setup_ambari_krb5_jaas, args)],
       ['setup-truststore', 'Setup truststore.', UserActionRestart(setup_truststore, args)],
       ['import-certificate', 'Import certificate to truststore.', UserActionRestart(setup_truststore, args, True)],
@@ -457,6 +457,21 @@ def init_action_parser(action, parser):
   # -h reserved for help
 
 @OsFamilyFuncImpl(OsFamilyImpl.DEFAULT)
+def add_jdbc_parser_options(parser):
+  add_parser_options('--jdbc-driver', dest="jdbc_driver", default=None, parser=parser,
+    help="Specifies the path to the JDBC driver JAR file or archive " \
+         "with all required files(jdbc jar, libraries and etc), for the " \
+         "database type specified with the --jdbc-db option. " \
+         "Used only with --jdbc-db option. Archive is supported only for" \
+         " sqlanywhere database.",
+    required_for_actions = (SETUP_JDBC_ACTION,))
+  add_parser_options('--jdbc-db', dest="jdbc_db", default=None, parser=parser,
+    help="Specifies the database type [postgres|mysql|mssql|oracle|hsqldb|sqlanywhere] for the " \
+         "JDBC driver specified with the --jdbc-driver option. Used only with --jdbc-driver option.",
+    required_for_actions = (SETUP_JDBC_ACTION,))
+
+
+@OsFamilyFuncImpl(OsFamilyImpl.DEFAULT)
 def init_setup_parser_options(parser):
   database_group = optparse.OptionGroup(parser, 'Database options (command need to include all options)')
   database_group.add_option('--database', default=None, help="Database to use embedded|oracle|mysql|mssql|postgres|sqlanywhere", dest="dbms")
@@ -469,15 +484,7 @@ def init_setup_parser_options(parser):
   parser.add_option_group(database_group)
 
   jdbc_group = optparse.OptionGroup(parser, 'JDBC options (command need to include all options)')
-  jdbc_group.add_option('--jdbc-driver', default=None, help="Specifies the path to the JDBC driver JAR file or archive " \
-                                                            "with all required files(jdbc jar, libraries and etc), for the " \
-                                                            "database type specified with the --jdbc-db option. " \
-                                                            "Used only with --jdbc-db option. Archive is supported only for" \
-                                                            " sqlanywhere database." ,
-                        dest="jdbc_driver")
-  jdbc_group.add_option('--jdbc-db', default=None, help="Specifies the database type [postgres|mysql|mssql|oracle|hsqldb|sqlanywhere] for the " \
-                                                        "JDBC driver specified with the --jdbc-driver option. Used only with --jdbc-driver option.",
-                        dest="jdbc_db")
+  add_jdbc_parser_options(jdbc_group)
   parser.add_option_group(jdbc_group)
 
   other_group = optparse.OptionGroup(parser, 'Other options')
@@ -532,6 +539,8 @@ def init_ldap_sync_parser_options(parser):
                     dest="ldap_sync_users")
   parser.add_option('--groups', default=None, help="LDAP sync groups option.  Specifies the path to a CSV file of group names to be synchronized.",
                     dest="ldap_sync_groups")
+  parser.add_option('--post-process-existing-users', action="store_true", default=False, help="While performing an LDAP sync, reprocess existing users by executing the post creation hook on them, if the feature is enabled",
+                    dest="ldap_sync_post_process_existing_users")
   parser.add_option('--ldap-sync-admin-name', default=None, help="Username for LDAP sync", dest="ldap_sync_admin_name")
   parser.add_option('--ldap-sync-admin-password', default=None, help="Password for LDAP sync", dest="ldap_sync_admin_password")
 
@@ -552,8 +561,10 @@ def init_ldap_setup_parser_options(parser):
   parser.add_option('--ldap-secondary-host', action="callback", callback=check_ldap_url_options, type='str', default=None, help="Secondary Host for LDAP (must not be used together with --ldap-secondary-url)", dest="ldap_secondary_host")
   parser.add_option('--ldap-secondary-port', action="callback", callback=check_ldap_url_options, type='int', default=None, help="Secondary Port for LDAP (must not be used together with --ldap-secondary-url)", dest="ldap_secondary_port")
   parser.add_option('--ldap-ssl', default=None, help="Use SSL [true/false] for LDAP", dest="ldap_ssl")
+  parser.add_option('--ldap-type', default=None, help="Specify ldap type [{}] for offering defaults for missing options.".format("/".join(LDAP_TYPES)), dest="ldap_type")
   parser.add_option('--ldap-user-class', default=None, help="User Attribute Object Class for LDAP", dest="ldap_user_class")
   parser.add_option('--ldap-user-attr', default=None, help="User Attribute Name for LDAP", dest="ldap_user_attr")
+  parser.add_option('--ldap-user-group-member-attr', default=None, help="User Group Member Attribute for LDAP", dest="ldap_user_group_member_attr")
   parser.add_option('--ldap-group-class', default=None, help="Group Attribute Object Class for LDAP", dest="ldap_group_class")
   parser.add_option('--ldap-group-attr', default=None, help="Group Attribute Name for LDAP", dest="ldap_group_attr")
   parser.add_option('--ldap-member-attr', default=None, help="Group Membership Attribute Name for LDAP", dest="ldap_member_attr")
@@ -565,11 +576,20 @@ def init_ldap_setup_parser_options(parser):
   parser.add_option('--ldap-referral', default=None, help="Referral method [follow/ignore] for LDAP", dest="ldap_referral")
   parser.add_option('--ldap-bind-anonym', default=None, help="Bind anonymously [true/false] for LDAP", dest="ldap_bind_anonym")
   parser.add_option('--ldap-sync-username-collisions-behavior', default=None, help="Handling behavior for username collisions [convert/skip] for LDAP sync", dest="ldap_sync_username_collisions_behavior")
+  parser.add_option('--ldap-sync-disable-endpoint-identification', default=None, help="Determines whether to disable endpoint identification (hostname verification) during SSL handshake for LDAP sync. This option takes effect only if --ldap-ssl is set to 'true'", dest="ldap_sync_disable_endpoint_identification")
   parser.add_option('--ldap-force-lowercase-usernames', default=None, help="Declares whether to force the ldap user name to be lowercase or leave as-is", dest="ldap_force_lowercase_usernames")
   parser.add_option('--ldap-pagination-enabled', default=None, help="Determines whether results from LDAP are paginated when requested", dest="ldap_pagination_enabled")
   parser.add_option('--ldap-force-setup', action="store_true", default=False, help="Forces the use of LDAP even if other (i.e. PAM) authentication method is configured already or if there is no authentication method configured at all", dest="ldap_force_setup")
   parser.add_option('--ambari-admin-username', default=None, help="Ambari administrator username for accessing Ambari's REST API", dest="ambari_admin_username")
   parser.add_option('--ambari-admin-password', default=None, help="Ambari administrator password for accessing Ambari's REST API", dest="ambari_admin_password")
+  parser.add_option('--truststore-type', default=None, help="Type of TrustStore (jks|jceks|pkcs12)", dest="trust_store_type")
+  parser.add_option('--truststore-path', default=None, help="Path of TrustStore", dest="trust_store_path")
+  parser.add_option('--truststore-password', default=None, help="Password for TrustStore", dest="trust_store_password")
+  parser.add_option('--truststore-reconfigure', action="store_true", default=None, help="Force to reconfigure TrustStore if exits", dest="trust_store_reconfigure")
+  parser.add_option('--ldap-enabled-ambari', default=None, help="Indicates whether to enable/disable LDAP authentication for Ambari, itself", dest='ldap_enabled_ambari')
+  parser.add_option('--ldap-manage-services', default=None, help="Indicates whether Ambari should manage the LDAP configurations for specified services", dest='ldap_manage_services')
+  parser.add_option('--ldap-enabled-services', default=None, help="A comma separated list of services that are expected to be configured for LDAP (you are allowed to use '*' to indicate ALL services)", dest='ldap_enabled_services')
+
 
 @OsFamilyFuncImpl(OsFamilyImpl.DEFAULT)
 def init_setup_sso_options(parser):
@@ -584,10 +604,24 @@ def init_setup_sso_options(parser):
   parser.add_option('--ambari-admin-username', default=None, help="Ambari administrator username for accessing Ambari's REST API", dest="ambari_admin_username")
   parser.add_option('--ambari-admin-password', default=None, help="Ambari administrator password for accessing Ambari's REST API", dest="ambari_admin_password")
 
+
 @OsFamilyFuncImpl(OsFamilyImpl.DEFAULT)
 def init_pam_setup_parser_options(parser):
   parser.add_option('--pam-config-file', default=None, help="Path to the PAM configuration file", dest="pam_config_file")
   parser.add_option('--pam-auto-create-groups', default=None, help="Automatically create groups for authenticated users [true/false]", dest="pam_auto_create_groups")
+
+
+@OsFamilyFuncImpl(OsFamilyImpl.DEFAULT)
+def init_tproxy_setup_parser_options(parser):
+  parser.add_option('--ambari-admin-username', default=None, help="Ambari administrator username for accessing Ambari's REST API", dest="ambari_admin_username")
+  parser.add_option('--ambari-admin-password', default=None, help="Ambari administrator password for accessing Ambari's REST API", dest="ambari_admin_password")
+  parser.add_option('--tproxy-enabled', default=None, help="Indicates whether to enable/disable Trusted Proxy Support", dest="tproxy_enabled")
+  parser.add_option('--tproxy-configuration-file-path', default=None,
+                    help="The path where the Trusted Proxy configuration is located. The content is expected to be in JSON format." \
+                    "Sample configuration:[{\"proxyuser\": \"knox\", \"hosts\": \"host1\", \"users\": \"user1, user2\", \"groups\": \"group1\"}]",
+                    dest="tproxy_configuration_file_path"
+                    )
+
 
 @OsFamilyFuncImpl(OsFamilyImpl.DEFAULT)
 def init_set_current_parser_options(parser):
@@ -598,7 +632,7 @@ def init_set_current_parser_options(parser):
 @OsFamilyFuncImpl(OsFamilyImpl.DEFAULT)
 def init_setup_security_parser_options(parser):
   parser.add_option('--security-option', default=None,
-                    help="Setup security option (setup-https|encrypt-password|setup-kerberos-jaas|setup-truststore|import-certificate)",
+                    help="Setup security option (setup-https|encrypt-passwords|setup-kerberos-jaas|setup-truststore|import-certificate)",
                     dest="security_option")
 
   https_group = optparse.OptionGroup(parser, "setup-https options")
@@ -802,7 +836,8 @@ def create_user_action_map(args, options):
     SETUP_SSO_ACTION: UserActionRestart(setup_sso, options),
     INSTALL_MPACK_ACTION: UserAction(install_mpack, options),
     UNINSTALL_MPACK_ACTION: UserAction(uninstall_mpack, options),
-    UPGRADE_MPACK_ACTION: UserAction(upgrade_mpack, options)
+    UPGRADE_MPACK_ACTION: UserAction(upgrade_mpack, options),
+    SETUP_TPROXY_ACTION: UserAction(setup_trusted_proxy, options)
   }
   return action_map
 
@@ -811,6 +846,7 @@ def create_user_action_map(args, options):
   action_map = {
         SETUP_ACTION: UserAction(setup, options),
         SETUP_JCE_ACTION : UserActionPossibleArgs(setup_jce_policy, [2], args),
+        SETUP_JDBC_ACTION : UserAction(setup_jdbc, options),
         START_ACTION: UserAction(start, options),
         STOP_ACTION: UserAction(stop, options),
         RESTART_ACTION: UserAction(restart, options),
@@ -834,7 +870,8 @@ def create_user_action_map(args, options):
         UPGRADE_MPACK_ACTION: UserAction(upgrade_mpack, options),
         PAM_SETUP_ACTION: UserAction(setup_pam, options),
         MIGRATE_LDAP_PAM_ACTION: UserAction(migrate_ldap_pam, options),
-        KERBEROS_SETUP_ACTION: UserAction(setup_kerberos, options)
+        KERBEROS_SETUP_ACTION: UserAction(setup_kerberos, options),
+        SETUP_TPROXY_ACTION: UserAction(setup_trusted_proxy, options)
       }
   return action_map
 
@@ -843,6 +880,7 @@ def init_action_parser(action, parser):
   action_parser_map = {
     SETUP_ACTION: init_setup_parser_options,
     SETUP_JCE_ACTION: init_empty_parser_options,
+    SETUP_JDBC_ACTION: add_jdbc_parser_options,
     START_ACTION: init_start_parser_options,
     STOP_ACTION: init_empty_parser_options,
     RESTART_ACTION: init_start_parser_options,
@@ -866,6 +904,7 @@ def init_action_parser(action, parser):
     UPGRADE_MPACK_ACTION: init_upgrade_mpack_parser_options,
     PAM_SETUP_ACTION: init_pam_setup_parser_options,
     KERBEROS_SETUP_ACTION: init_kerberos_setup_parser_options,
+    SETUP_TPROXY_ACTION: init_tproxy_setup_parser_options
   }
   parser.add_option("-v", "--verbose",
                     action="store_true", dest="verbose", default=False,

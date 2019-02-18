@@ -480,10 +480,11 @@ class WebSocket(object):
         if not bytes and self.reading_buffer_size > 0:
             return False
 
-        self.reading_buffer_size = s.parser.send(bytes) or DEFAULT_READING_SIZE
+        with self.lock:
+          self.reading_buffer_size = s.parser.send(bytes) or DEFAULT_READING_SIZE
 
         if s.closing is not None:
-            logger.debug("Closing message received (%d) '%s'" % (s.closing.code, s.closing.reason))
+            logger.info("Closing message received (%d) '%s'" % (s.closing.code, s.closing.reason))
             if not self.server_terminated:
                 self.close(s.closing.code, s.closing.reason)
             else:
@@ -492,7 +493,7 @@ class WebSocket(object):
 
         if s.errors:
             for error in s.errors:
-                logger.debug("Error message received (%d) '%s'" % (error.code, error.reason))
+                logger.warn("Error message received (%d) '%s'" % (error.code, error.reason))
                 self.close(error.code, error.reason)
             s.errors = []
             return False
@@ -548,6 +549,8 @@ class WebSocket(object):
                 while not self.terminated:
                     if not self.once():
                         break
+            except:
+                logger.exception("Websocket connection was closed with an exception")
             finally:
                 self.terminate()
 

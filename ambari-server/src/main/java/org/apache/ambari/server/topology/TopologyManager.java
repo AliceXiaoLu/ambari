@@ -27,6 +27,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -47,12 +48,12 @@ import org.apache.ambari.server.controller.RequestStatusResponse;
 import org.apache.ambari.server.controller.internal.ArtifactResourceProvider;
 import org.apache.ambari.server.controller.internal.BaseClusterRequest;
 import org.apache.ambari.server.controller.internal.CalculatedStatus;
-import org.apache.ambari.server.controller.internal.CredentialResourceProvider;
 import org.apache.ambari.server.controller.internal.ProvisionClusterRequest;
 import org.apache.ambari.server.controller.internal.RequestImpl;
 import org.apache.ambari.server.controller.internal.ScaleClusterRequest;
 import org.apache.ambari.server.controller.internal.Stack;
 import org.apache.ambari.server.controller.spi.NoSuchParentResourceException;
+import org.apache.ambari.server.controller.spi.Request;
 import org.apache.ambari.server.controller.spi.RequestStatus;
 import org.apache.ambari.server.controller.spi.Resource;
 import org.apache.ambari.server.controller.spi.ResourceAlreadyExistsException;
@@ -61,6 +62,7 @@ import org.apache.ambari.server.controller.spi.SystemException;
 import org.apache.ambari.server.controller.spi.UnsupportedPropertyException;
 import org.apache.ambari.server.events.AmbariEvent;
 import org.apache.ambari.server.events.ClusterConfigFinishedEvent;
+import org.apache.ambari.server.events.ClusterProvisionStartedEvent;
 import org.apache.ambari.server.events.ClusterProvisionedEvent;
 import org.apache.ambari.server.events.HostsRemovedEvent;
 import org.apache.ambari.server.events.RequestFinishedEvent;
@@ -74,6 +76,7 @@ import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.SecurityType;
 import org.apache.ambari.server.state.host.HostImpl;
 import org.apache.ambari.server.state.quicklinksprofile.QuickLinksProfile;
+import org.apache.ambari.server.topology.addservice.ResourceProviderAdapter;
 import org.apache.ambari.server.topology.tasks.ConfigureClusterTask;
 import org.apache.ambari.server.topology.tasks.ConfigureClusterTaskFactory;
 import org.apache.ambari.server.topology.validators.TopologyValidatorService;
@@ -82,6 +85,8 @@ import org.apache.ambari.server.utils.RetryHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.eventbus.Subscribe;
 import com.google.inject.Singleton;
 import com.google.inject.persist.Transactional;
@@ -308,8 +313,8 @@ public class TopologyManager {
     // create resources
     ambariContext.createAmbariResources(topology, clusterName, securityType, repoVersion, repoVersionID);
 
-    if (securityConfiguration != null && securityConfiguration.getDescriptor() != null) {
-      submitKerberosDescriptorAsArtifact(clusterName, securityConfiguration.getDescriptor());
+    if (securityConfiguration != null) {
+      securityConfiguration.getDescriptor().ifPresent(descriptor -> submitKerberosDescriptorAsArtifact(clusterName, descriptor));
     }
 
     if (credential != null) {
@@ -351,6 +356,7 @@ public class TopologyManager {
 
     ambariContext.persistInstallStateForUI(clusterName, stack.getName(), stack.getVersion());
     clusterProvisionWithBlueprintCreateRequests.put(clusterId, logicalRequest);
+    ambariEventPublisher.publish(new ClusterProvisionStartedEvent(clusterId));
     return getRequestStatus(logicalRequest.getRequestId());
   }
 
@@ -392,32 +398,23 @@ public class TopologyManager {
     }
   }
 
-  private void submitCredential(String clusterName, Credential credential) {
-
-    ResourceProvider provider =
-        ambariContext.getClusterController().ensureResourceProvider(Resource.Type.Credential);
-
-    Map<String, Object> properties = new HashMap<>();
-    properties.put(CredentialResourceProvider.CREDENTIAL_CLUSTER_NAME_PROPERTY_ID, clusterName);
-    properties.put(CredentialResourceProvider.CREDENTIAL_ALIAS_PROPERTY_ID, KDC_ADMIN_CREDENTIAL);
-    properties.put(CredentialResourceProvider.CREDENTIAL_PRINCIPAL_PROPERTY_ID, credential.getPrincipal());
-    properties.put(CredentialResourceProvider.CREDENTIAL_KEY_PROPERTY_ID, credential.getKey());
-    properties.put(CredentialResourceProvider.CREDENTIAL_TYPE_PROPERTY_ID, credential.getType().name());
-
-    org.apache.ambari.server.controller.spi.Request request = new RequestImpl(Collections.emptySet(),
-        Collections.singleton(properties), Collections.emptyMap(), null);
-
+  private static void submitCredential(String clusterName, Credential credential) {
+    ResourceProvider provider = AmbariContext.getClusterController().ensureResourceProvider(Resource.Type.Credential);
+    Map<String, Object> credentialProperties = ResourceProviderAdapter.createCredentialRequestProperties(clusterName, credential);
+    Request request = new RequestImpl(ImmutableSet.of(), ImmutableSet.of(credentialProperties), ImmutableMap.of(), null);
+    String baseMessage = String.format("Failed to add credential %s to cluster %s", credential.getAlias(), clusterName);
     try {
       RequestStatus status = provider.createResources(request);
       if (status.getStatus() != RequestStatus.Status.Complete) {
-        throw new RuntimeException("Failed to attach kerberos_descriptor artifact to cluster!");
+        String msg = String.format("%s, received status: %s", baseMessage, status.getStatus());
+        LOG.error(msg);
+        throw new RuntimeException(msg);
       }
-    } catch (SystemException | UnsupportedPropertyException | NoSuchParentResourceException e) {
-      throw new RuntimeException("Failed to attach kerberos_descriptor artifact to cluster: " + e);
-    } catch (ResourceAlreadyExistsException e) {
-      throw new RuntimeException("Failed to attach kerberos_descriptor artifact to cluster as resource already exists.");
+    } catch (ResourceAlreadyExistsException | SystemException | UnsupportedPropertyException | NoSuchParentResourceException e) {
+      String msg = String.format("%s, %s", baseMessage, e);
+      LOG.error(msg);
+      throw new RuntimeException(msg, e);
     }
-
   }
 
   /**
@@ -443,21 +440,16 @@ public class TopologyManager {
     return securityConfiguration;
   }
 
-  private void submitKerberosDescriptorAsArtifact(String clusterName, String descriptor) {
+  private void submitKerberosDescriptorAsArtifact(String clusterName, Map<?,?> descriptor) {
 
     ResourceProvider artifactProvider =
         ambariContext.getClusterController().ensureResourceProvider(Resource.Type.Artifact);
 
-    Map<String, Object> properties = new HashMap<>();
-    properties.put(ArtifactResourceProvider.ARTIFACT_NAME_PROPERTY, "kerberos_descriptor");
-    properties.put("Artifacts/cluster_name", clusterName);
-
-    Map<String, String> requestInfoProps = new HashMap<>();
-    requestInfoProps.put(org.apache.ambari.server.controller.spi.Request.REQUEST_INFO_BODY_PROPERTY,
-            "{\"" + ArtifactResourceProvider.ARTIFACT_DATA_PROPERTY + "\": " + descriptor + "}");
-
-    org.apache.ambari.server.controller.spi.Request request = new RequestImpl(Collections.emptySet(),
-        Collections.singleton(properties), requestInfoProps, null);
+    Map<String, Object> properties = ResourceProviderAdapter.createKerberosDescriptorRequestProperties(clusterName);
+    Map<String, String> requestInfoProps = ImmutableMap.of(
+      Request.REQUEST_INFO_BODY_PROPERTY, ArtifactResourceProvider.toArtifactDataJson(descriptor)
+    );
+    Request request = new RequestImpl(Collections.emptySet(), Collections.singleton(properties), requestInfoProps, null);
 
     try {
       RequestStatus status = artifactProvider.createResources(request);
@@ -693,7 +685,7 @@ public class TopologyManager {
       if (!matchedToRequest) {
         boolean addToAvailableList = true;
         for (HostImpl registered : availableHosts) {
-          if (registered.getHostId() == host.getHostId()) {
+          if (Objects.equals(registered.getHostId(), host.getHostId())) {
             LOG.info("Host {} re-registered, will not be added to the available hosts list", hostName);
             addToAvailableList = false;
             break;

@@ -22,9 +22,7 @@ App.MainSideMenuView = Em.CollectionView.extend({
   tagName: 'ul',
   classNames: ['nav', 'side-nav-menu', 'nav-pills', 'nav-stacked'],
 
-  views: function () {
-    return App.router.get('mainViewsController.ambariViews');
-  }.property('App.router.mainViewsController.ambariViews'),
+  views: Em.computed.alias('App.router.mainViewsController.ambariViews'),
 
   didInsertElement: function() {
     $('[data-toggle="collapse-side-nav"]').on('click', () => {
@@ -212,14 +210,6 @@ App.SideNavServiceMenuView = Em.CollectionView.extend({
 
     shouldBeRestarted: Em.computed.someBy('content.hostComponents', 'staleConfigs', true),
 
-    alertsCountDisplay: function () {
-      return this.get('content.alertsCount') > 99 ? "99+" : this.get('content.alertsCount');
-    }.property('content.alertsCount'),
-
-    noAlerts: Em.computed.equal('content.alertsCount', 0),
-
-    hasCriticalAlerts: Em.computed.alias('content.hasCriticalAlerts'),
-
     isMasterDown: function() {
       return this.get('content.hostComponents').filterProperty('isMaster').some((component) => {
         return !component.get('isRunning');
@@ -229,6 +219,14 @@ App.SideNavServiceMenuView = Em.CollectionView.extend({
     isClientOnlyService : function(){
       return App.get('services.clientOnly').contains(this.get('content.serviceName'));
     }.property('content.serviceName'),
+    
+    displayName: function() {
+      if (this.get('content.hasMasterOrSlaveComponent') || this.get('content.displayName').endsWith('Client')) {
+        return this.get('content.displayName');
+      } else {
+        return this.get('content.displayName') + ' Client';
+      }
+    }.property('content.displayName', 'content.hasMasterOrSlaveComponent'),
 
     isConfigurable: function () {
       return !App.get('services.noConfigTypes').contains(this.get('content.serviceName'));
