@@ -28,7 +28,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class DataCleaner(threading.Thread):
-  COMMAND_FILE_NAMES_PATTERN = 'errors-\d+.txt|output-\d+.txt|site-\d+.pp|structured-out-\d+.json|command-\d+.json'
+  COMMAND_FILE_NAMES_PATTERN = 'errors-\d+.txt|output-\d+.txt|site-\d+.pp|structured-out-[a-z0-9z]+.json|command-\d+.json'
   AUTO_COMMAND_FILE_NAMES_PATTERN = \
     'auto_command-\d+.json|auto_errors-\d+.txt|auto_output-\d+.txt|auto_structured-out-\d+.json'
   FILE_NAME_PATTERN = AUTO_COMMAND_FILE_NAMES_PATTERN + "|" + COMMAND_FILE_NAMES_PATTERN
@@ -109,11 +109,11 @@ class DataCleaner(threading.Thread):
             break
         except Exception:
           pass
-      else:
-        # Did not reach below cap.
-        logger.warn("DataCleaner deleted an additional %d files, currently log files occupy %d bytes." %
+    else:
+      # Did not reach below cap.
+      logger.warn("DataCleaner deleted an additional %d files, currently log files occupy %d bytes." %
                     (count, total_size_bytes))
-        pass
+      pass
 
   def run(self):
     while not self.stopped:
