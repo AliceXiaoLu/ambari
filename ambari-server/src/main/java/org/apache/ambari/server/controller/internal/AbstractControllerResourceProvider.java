@@ -64,6 +64,8 @@ public abstract class AbstractControllerResourceProvider extends AbstractAuthori
     this.managementController = managementController;
   }
 
+
+
   public static void init(ResourceProviderFactory factory) {
     resourceProviderFactory = factory;
   }
@@ -163,6 +165,8 @@ public abstract class AbstractControllerResourceProvider extends AbstractAuthori
         return resourceProviderFactory.getUpgradeResourceProvider(managementController);
       case Stack:
         return new StackResourceProvider(managementController);
+      case Mpack:
+        return new MpackResourceProvider(managementController);
       case StackVersion:
         return new StackVersionResourceProvider(managementController);
       case ClusterStackVersion:
@@ -243,6 +247,8 @@ public abstract class AbstractControllerResourceProvider extends AbstractAuthori
         return resourceProviderFactory.getAlertTargetResourceProvider();
       case ViewInstance:
         return resourceProviderFactory.getViewInstanceResourceProvider();
+      case Auth:
+        return resourceProviderFactory.getAuthResourceProvider(managementController);
       default:
         throw new IllegalArgumentException("Unknown type " + type);
     }

@@ -53,6 +53,7 @@ import org.apache.ambari.server.state.AlertState;
 import org.apache.ambari.server.state.alert.AlertGroup;
 import org.apache.ambari.server.state.alert.AlertTarget;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -275,7 +276,7 @@ public class AlertTargetResourceProvider extends
   private void createAlertTargets(Set<Map<String, Object>> requestMaps, Map<String, String> requestInfoProps)
       throws AmbariException {
     for (Map<String, Object> requestMap : requestMaps) {
-      String name = (String) requestMap.get(ALERT_TARGET_NAME);
+      String name = StringEscapeUtils.escapeHtml4((String) requestMap.get(ALERT_TARGET_NAME));
       String description = (String) requestMap.get(ALERT_TARGET_DESCRIPTION);
       String notificationType = (String) requestMap.get(ALERT_TARGET_NOTIFICATION_TYPE);
       Collection<String> alertStates = (Collection<String>) requestMap.get(ALERT_TARGET_STATES);
@@ -335,13 +336,15 @@ public class AlertTargetResourceProvider extends
       }
 
       // if we are overwriting an existing, determine if one exists first
-      AlertTargetEntity entity = null;
-      if( overwriteExisting ) {
-        entity = s_dao.findTargetByName(name);
-      }
+      AlertTargetEntity entity = s_dao.findTargetByName(name);
 
       if (null == entity) {
         entity = new AlertTargetEntity();
+      } else {
+        if( !overwriteExisting ) {
+          throw new IllegalArgumentException(
+              "Alert targets already exists and can't be created");
+        }
       }
 
       // groups are not required on creation
@@ -422,9 +425,14 @@ public class AlertTargetResourceProvider extends
       entity.setNotificationType(notificationType);
     }
 
-    String properties = s_gson.toJson(extractProperties(requestMap));
-    if (!StringUtils.isEmpty(properties)) {
-      entity.setProperties(properties);
+    Map<String, Object> propertiesMap = extractProperties(requestMap);
+
+    if (propertiesMap != null) {
+      String properties = s_gson.toJson(propertiesMap);
+      if (!StringUtils.isEmpty(properties)) {
+        LOG.debug("Updating Alert Target properties map to: " + properties);
+        entity.setProperties(properties);
+      }
     }
 
     // a null alert state implies that the key was not set and no update
@@ -533,15 +541,21 @@ public class AlertTargetResourceProvider extends
   private Map<String, Object> extractProperties(Map<String, Object> requestMap) {
     Map<String, Object> normalizedMap = new HashMap<>(
       requestMap.size());
+    boolean has_properties = false;
 
     for (Entry<String, Object> entry : requestMap.entrySet()) {
       String key = entry.getKey();
       String propCat = PropertyHelper.getPropertyCategory(key);
 
       if (propCat.equals(ALERT_TARGET_PROPERTIES)) {
+        has_properties = true;
         String propKey = PropertyHelper.getPropertyName(key);
         normalizedMap.put(propKey, entry.getValue());
       }
+    }
+
+    if (!has_properties) {
+      normalizedMap = null;
     }
 
     return normalizedMap;

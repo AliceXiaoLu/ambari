@@ -21,6 +21,10 @@ import static org.apache.ambari.server.controller.internal.HostComponentResource
 import static org.apache.ambari.server.controller.internal.HostComponentResourceProvider.COMPONENT_NAME;
 import static org.apache.ambari.server.controller.internal.HostComponentResourceProvider.HOST_NAME;
 import static org.apache.ambari.server.controller.internal.HostComponentResourceProvider.SERVICE_NAME;
+import static org.apache.ambari.server.security.authorization.RoleAuthorization.AMBARI_VIEW_STATUS_INFO;
+import static org.apache.ambari.server.security.authorization.RoleAuthorization.CLUSTER_VIEW_STATUS_INFO;
+import static org.apache.ambari.server.security.authorization.RoleAuthorization.HOST_VIEW_STATUS_INFO;
+import static org.apache.ambari.server.security.authorization.RoleAuthorization.SERVICE_VIEW_STATUS_INFO;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -71,6 +75,7 @@ import org.apache.ambari.server.topology.LogicalRequest;
 import org.apache.ambari.server.topology.TopologyManager;
 import org.apache.ambari.server.utils.SecretReference;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -138,6 +143,7 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
   public static final String INPUTS_ID = "parameters";
   public static final String EXCLUSIVE_ID = "exclusive";
   public static final String HAS_RESOURCE_FILTERS = "HAS_RESOURCE_FILTERS";
+  public static final String CONTEXT = "context";
 
   private static final Set<String> PK_PROPERTY_IDS = ImmutableSet.of(REQUEST_ID_PROPERTY_ID);
 
@@ -146,7 +152,7 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
   /**
    * The key property ids for a Request resource.
    */
-  private static Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
+  private static final Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
       .put(Resource.Type.Request, REQUEST_ID_PROPERTY_ID)
       .put(Resource.Type.Cluster, REQUEST_CLUSTER_NAME_PROPERTY_ID)
       .build();
@@ -255,9 +261,7 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
             }
           } else {
             // A custom action has been requested
-            ActionDefinition actionDefinition = (actionName == null)
-                ? null
-                : getManagementController().getAmbariMetaInfo().getActionDefinition(actionName);
+            ActionDefinition actionDefinition = getManagementController().getAmbariMetaInfo().getActionDefinition(actionName);
 
             Set<RoleAuthorization> permissions = (actionDefinition == null)
                 ? null
@@ -294,9 +298,9 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
     Boolean ascOrder = (ascOrderRaw == null ? null : Boolean.parseBoolean(ascOrderRaw));
 
     if (null == predicate) {
+      authorizeGetResources(null);
       // the no-arg call to /requests is here
-      resources.addAll(
-          getRequestResources(null, null, null, maxResults, ascOrder, requestedIds));
+      resources.addAll(getRequestResources(null, null, null, maxResults, ascOrder, requestedIds));
     } else {
       // process /requests with a predicate
       // process /clusters/[cluster]/requests
@@ -315,12 +319,30 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
           requestStatus = (String) properties.get(REQUEST_STATUS_PROPERTY_ID);
         }
 
+        authorizeGetResources(clusterName);
         resources.addAll(getRequestResources(clusterName, requestId, requestStatus, maxResults,
             ascOrder, requestedIds));
       }
     }
 
     return resources;
+  }
+
+  private void authorizeGetResources(String clusterName) throws NoSuchParentResourceException, AuthorizationException {
+    final boolean ambariLevelRequest = StringUtils.isBlank(clusterName);
+    final ResourceType resourceType = ambariLevelRequest ? ResourceType.AMBARI : ResourceType.CLUSTER;
+    Long resourceId;
+    try {
+      resourceId = ambariLevelRequest ? null : getClusterResourceId(clusterName);
+    } catch (AmbariException e) {
+      throw new NoSuchParentResourceException("Error while fetching cluster resource ID", e);
+    }
+    final Set<RoleAuthorization> requiredAuthorizations = ambariLevelRequest ? Sets.newHashSet(AMBARI_VIEW_STATUS_INFO)
+        : Sets.newHashSet(CLUSTER_VIEW_STATUS_INFO, HOST_VIEW_STATUS_INFO, SERVICE_VIEW_STATUS_INFO);
+
+    if (!AuthorizationHelper.isAuthorized(resourceType, resourceId, requiredAuthorizations)) {
+      throw new AuthorizationException(String.format("The authenticated user is not authorized to fetch request related information."));
+    }
   }
 
   @Override
@@ -400,7 +422,7 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
     // Cluster name may be empty for custom actions
     String clusterNameStr = (String) propertyMap.get(REQUEST_CLUSTER_NAME_PROPERTY_ID);
     String requestIdStr = (String) propertyMap.get(REQUEST_ID_PROPERTY_ID);
-    long requestId = Integer.valueOf(requestIdStr);
+    long requestId = Integer.parseInt(requestIdStr);
     String requestStatusStr = (String) propertyMap.get(REQUEST_STATUS_PROPERTY_ID);
     HostRoleStatus requestStatus = null;
     if (requestStatusStr != null) {
@@ -408,7 +430,7 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
       // in this case it will be mapped to HTTP 400 Bad Request
       requestStatus = HostRoleStatus.valueOf(requestStatusStr);
     }
-    String abortReason = (String) propertyMap.get(REQUEST_ABORT_REASON_PROPERTY_ID);
+    String abortReason = StringEscapeUtils.escapeHtml4((String) propertyMap.get(REQUEST_ABORT_REASON_PROPERTY_ID));
     String removePendingHostRequests = (String) propertyMap.get(REQUEST_REMOVE_PENDING_HOST_REQUESTS_ID);
 
     RequestRequest requestRequest = new RequestRequest(clusterNameStr, requestId);
@@ -690,9 +712,7 @@ public class RequestResourceProvider extends AbstractControllerResourceProvider 
         // !!! this call will result in mixed results of cluster and non-cluster.  this
         // will get fixed in a future iteration, as the host_role_command table does not
         // currently have direct cluster affinity, and changing that is a tad destructive.
-        requestIds = actionManager.getRequestsByStatus(status,
-          maxResults != null ? maxResults : BaseRequest.DEFAULT_PAGE_SIZE,
-                ascOrder != null ? ascOrder : false);
+        requestIds = actionManager.getRequestsByStatus(status, maxResults, ascOrder);
       }
 
       LOG.debug("List<Long> requestIds = actionManager.getRequestsByStatus = {}", requestIds.size());

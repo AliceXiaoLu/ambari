@@ -19,8 +19,8 @@ package org.apache.ambari.server.orm.dao;
 
 import java.util.List;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.orm.RequiresSession;
@@ -174,5 +174,30 @@ public class StackDAO {
     if (null != stack) {
       entityManager.remove(stack);
     }
+  }
+
+  /**
+   * Removes the specified stack based on mpackid.
+   *
+   * @param mpackId
+   *
+   */
+  @Transactional
+  public void removeByMpack(Long mpackId) {
+    entityManagerProvider.get().remove(findByMpack(mpackId));
+  }
+
+  /**
+   * Gets the stack that matches the specified mpackid.
+   *
+   * @return the stack matching the specified mpackid or {@code null}
+   *         if none.
+   */
+  public StackEntity findByMpack(Long mpackId) {
+    TypedQuery<StackEntity> query = entityManagerProvider.get().createNamedQuery(
+            "StackEntity.findByMpack", StackEntity.class);
+    query.setParameter("mpackId", mpackId);
+
+    return daoUtils.selectOne(query);
   }
 }

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
 # this work for additional information regarding copyright ownership.
@@ -13,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-class Grep:
 
+class Grep:
   # How many lines from command output send to server
   OUTPUT_LAST_LINES = 10
   # How many lines from command error output send to server (before Err phrase)
@@ -62,6 +63,7 @@ class Grep:
       return "".join(lines).strip()
     else:
       return string
+
   def tail(self, string, n):
     """
     Copies last n lines from string to result. Also, string trim is performed.
@@ -72,5 +74,19 @@ class Grep:
       return stripped_string
     else:
       length = len(lines)
-      tailed = lines[length - n:]
+      tailed = lines[length - n :]
       return "".join(tailed)
+
+  def tail_by_symbols(self, string, n):
+    """
+    Copies last n symbols with trimming by rows from string to result. Also, string trim is performed.
+    """
+    stripped_string = string.strip()
+    lines = stripped_string.splitlines(True)
+    tailed = []
+    for line in reversed(lines):
+      if len("".join(tailed) + line) <= n:
+        tailed[:0] = line
+      else:
+        break
+    return "".join(tailed)

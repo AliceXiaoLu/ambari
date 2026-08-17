@@ -18,16 +18,15 @@
 
 package org.apache.ambari.server.state.stack;
 
-import static java.util.Map.Entry;
-
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 
 import org.apache.ambari.server.state.UriInfo;
-import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonProperty;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.gson.annotations.SerializedName;
 
 /**
@@ -72,6 +71,7 @@ public class MetricDefinition {
     return metricMap;
   }
   
+  @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     sb.append("{type=").append(type);

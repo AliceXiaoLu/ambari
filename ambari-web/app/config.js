@@ -32,7 +32,7 @@ App.defaultStackVersion = 'HDP-2.3';
 App.defaultWindowsStackVersion = 'HDPWIN-2.1';
 
 App.defaultJavaHome = '/usr/jdk/jdk1.6.0_31';
-App.timeout = 180000; // default AJAX timeout
+App.timeout = 300000; // default AJAX timeout
 App.maxRetries = 3; // max number of retries for certain AJAX calls
 App.sessionKeepAliveInterval  = 60000;
 App.bgOperationsUpdateInterval = 6000;
@@ -57,6 +57,8 @@ App.healthStatusRed = '#EF6162';
 App.healthStatusGreen = '#1EB475';
 App.healthStatusOrange = '#E98A40';
 App.widgetContentColor = '#666666';
+App.gaugeWidgetRemainingAreaColor = '#DDDDDD';
+App.dataVisualizationColorScheme = ['#41bfae', '#79e3d1', '#63c2e5', '#c4aeff', '#b991d9', '#ffb9bf', '#ffae65', '#f6d151', '#a7cf82', '#abdfd5', '#3aac9c', '#6dccbc', '#59aece', '#b09ce5', '#a682c3', '#e5a6ac', '#e59c5b', '#ddbc49', '#96ba75', '#9ac8bf', '#83d5ca', '#a8ede1', '#99d7ee', '#d9caff', '#d1b7e6', '#ffd1d5', '#ffca9b', '#f9e18e', '#c6e0ae', '#c8eae4'];
 App.inactivityRemainTime = 60; // in seconds
 App.enableLogger = true;
 App.stackVersionsAvailable = true;
@@ -90,7 +92,9 @@ App.supports = {
   manageJournalNode: true,
   enableToggleKerberos: true,
   enableAddDeleteServices: true,
-  regenerateKeytabsOnSingleHost: false
+  regenerateKeytabsOnSingleHost: false,
+  disableCredentialsAutocompleteForRepoUrls: true,
+  enableNewServiceRestartOptions: false
 };
 
 if (App.enableExperimental) {

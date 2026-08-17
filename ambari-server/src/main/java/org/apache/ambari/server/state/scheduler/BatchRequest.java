@@ -17,11 +17,12 @@
  */
 package org.apache.ambari.server.state.scheduler;
 
-import org.codehaus.jackson.annotate.JsonProperty;
-import org.codehaus.jackson.map.annotate.JsonSerialize;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class BatchRequest implements Comparable<BatchRequest> {
   private Long orderId;
+  private Long requestId;
   private Type type;
   private String uri;
   private String body;
@@ -36,6 +37,15 @@ public class BatchRequest implements Comparable<BatchRequest> {
 
   public void setOrderId(Long orderId) {
     this.orderId = orderId;
+  }
+
+  @JsonProperty("request_id")
+  public Long getRequestId() {
+    return requestId;
+  }
+
+  public void setRequestId(Long requestId) {
+    this.requestId = requestId;
   }
 
   @JsonProperty("request_type")
@@ -56,7 +66,7 @@ public class BatchRequest implements Comparable<BatchRequest> {
     this.uri = uri;
   }
 
-  @JsonSerialize(include = JsonSerialize.Inclusion.NON_EMPTY)
+  @JsonInclude(JsonInclude.Include.NON_EMPTY)
   @JsonProperty("request_body")
   public String getBody() {
     return body;
@@ -66,7 +76,7 @@ public class BatchRequest implements Comparable<BatchRequest> {
     this.body = body;
   }
 
-  @JsonSerialize(include = JsonSerialize.Inclusion.NON_EMPTY)
+  @JsonInclude(JsonInclude.Include.NON_EMPTY)
   @JsonProperty("request_status")
   public String getStatus() {
     return status;
@@ -76,7 +86,7 @@ public class BatchRequest implements Comparable<BatchRequest> {
     this.status = status;
   }
 
-  @JsonSerialize(include = JsonSerialize.Inclusion.NON_EMPTY)
+  @JsonInclude(JsonInclude.Include.NON_EMPTY)
   @JsonProperty("return_code")
   public Integer getReturnCode() {
     return returnCode;
@@ -86,7 +96,7 @@ public class BatchRequest implements Comparable<BatchRequest> {
     this.returnCode = returnCode;
   }
 
-  @JsonSerialize(include = JsonSerialize.Inclusion.NON_EMPTY)
+  @JsonInclude(JsonInclude.Include.NON_EMPTY)
   @JsonProperty("response_message")
   public String getResponseMsg() {
     return responseMsg;

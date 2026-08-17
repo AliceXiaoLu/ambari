@@ -17,21 +17,22 @@
  */
 package org.apache.ambari.server.orm.entities;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.UniqueConstraint;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
+import jakarta.persistence.TableGenerator;
+import jakarta.persistence.UniqueConstraint;
 
 import org.apache.commons.lang.builder.EqualsBuilder;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
 
 /**
@@ -68,7 +69,8 @@ public class UpgradeHistoryEntity {
   @Column(name = "upgrade_id", nullable = false, insertable = false, updatable = false)
   private Long upgradeId;
 
-  @JoinColumn(name = "upgrade_id", nullable = false)
+  @ManyToOne
+  @JoinColumn(name = "upgrade_id", referencedColumnName = "upgrade_id", nullable = false)
   private UpgradeEntity upgrade;
 
   @Column(name = "service_name", nullable = false, insertable = true, updatable = true)
@@ -222,7 +224,7 @@ public class UpgradeHistoryEntity {
    */
   @Override
   public String toString() {
-    return Objects.toStringHelper(this)
+    return MoreObjects.toStringHelper(this)
         .add("id", id)
         .add("upgradeId", upgradeId)
         .add("serviceName", serviceName)

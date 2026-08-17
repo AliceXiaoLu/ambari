@@ -65,6 +65,21 @@ App.Service = DS.Model.extend({
    */
   isInPassive: Em.computed.equal('passiveState', 'ON'),
 
+  /**
+   * @type {bool}
+   */
+  hasMasterOrSlaveComponent: function() {
+    if (App.router.get('clusterController.isHostComponentMetricsLoaded')) {
+      return this.get('slaveComponents').toArray()
+      .concat(this.get('masterComponents').toArray())
+      .mapProperty('totalCount')
+      .reduce((a, b) => a + b, 0) > 0;
+    } else {
+      //Assume that service has master or/and slave components until data loaded
+      return true;
+    }
+  }.property('slaveComponents.@each.totalCount', 'masterComponents.@each.totalCount'),
+
   serviceComponents: function() {
     var clientComponents = this.get('clientComponents').mapProperty('componentName');
     var slaveComponents = this.get('slaveComponents').mapProperty('componentName');
@@ -102,7 +117,7 @@ App.Service = DS.Model.extend({
   serviceTypes: function() {
     var typeServiceMap = {
       GANGLIA: ['MONITORING'],
-      HDFS: ['HA_MODE', 'FEDERATION'],
+      HDFS: ['HA_MODE', 'FEDERATION', 'DFSRouter'],
       YARN: ['HA_MODE'],
       RANGER: ['HA_MODE'],
       HAWQ: ['HA_MODE']
@@ -168,16 +183,25 @@ App.Service = DS.Model.extend({
   }.property('restartRequiredHostsAndComponents'),
 
   /**
+   * @type {number}
+   */
+  warningCount: 0,
+  /**
+   * @type {number}
+   */
+  criticalCount: 0,
+
+  /**
    * Does service have Critical Alerts
    * @type {boolean}
    */
-  hasCriticalAlerts: false,
+  hasCriticalAlerts: Em.computed.gte('criticalCount', 0),
 
   /**
    * Number of the Critical and Warning alerts for current service
    * @type {number}
    */
-  alertsCount: 0
+  alertsCount: Em.computed.sumProperties('warningCount', 'criticalCount')
 
 });
 

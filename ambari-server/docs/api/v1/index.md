@@ -26,7 +26,7 @@ The Ambari API facilitates the management and monitoring of the resources of an 
 - [Management](#management)
 - [Resources](#resources)
 - [Partial Response](#partial-response)
-- [Query Parameters](#query-parameters)
+- [Query Predicates](#query-predicates)
 - [Batch Requests](#batch-requests)
 - [RequestInfo](#request-info)
 - [Temporal Metrics](#temporal-metrics)
@@ -176,7 +176,7 @@ Delete the cluster named 'c1'.
 
 ### Asynchronous Response
 
-The managment APIs can return a response code of 202 which indicates that the request has been accepted.  The body of the response contains the ID and href of the request resource that was created to carry out the instruction. 
+The management APIs can return a response code of 202 which indicates that the request has been accepted.  The body of the response contains the ID and href of the request resource that was created to carry out the instruction. 
     
     202 Accepted
     {

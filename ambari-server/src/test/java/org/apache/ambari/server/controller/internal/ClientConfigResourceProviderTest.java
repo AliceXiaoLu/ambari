@@ -23,11 +23,10 @@ import static org.easymock.EasyMock.anyString;
 import static org.easymock.EasyMock.createMock;
 import static org.easymock.EasyMock.createNiceMock;
 import static org.easymock.EasyMock.expect;
-import static org.easymock.EasyMock.expectLastCall;
 import static org.easymock.EasyMock.replay;
 import static org.easymock.EasyMock.verify;
 import static org.junit.Assert.assertFalse;
-import static org.powermock.api.mockito.PowerMockito.whenNew;
+import static org.mockito.Mockito.mockStatic;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -56,6 +55,8 @@ import org.apache.ambari.server.controller.spi.ResourceProvider;
 import org.apache.ambari.server.controller.spi.SystemException;
 import org.apache.ambari.server.controller.utilities.PredicateBuilder;
 import org.apache.ambari.server.controller.utilities.PropertyHelper;
+import org.apache.ambari.server.security.TestAuthenticationFactory;
+import org.apache.ambari.server.security.authorization.AuthorizationException;
 import org.apache.ambari.server.stack.StackManager;
 import org.apache.ambari.server.state.ClientConfigFileDefinition;
 import org.apache.ambari.server.state.Cluster;
@@ -76,20 +77,34 @@ import org.apache.ambari.server.state.UserGroupInfo;
 import org.apache.ambari.server.state.ValueAttributesInfo;
 import org.apache.ambari.server.utils.StageUtils;
 import org.easymock.EasyMock;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
 import org.powermock.api.easymock.PowerMock;
-import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * ClientConfigResourceProviderTest tests.
  */
 @RunWith(PowerMockRunner.class)
-@PrepareForTest({ClientConfigResourceProvider.class, StageUtils.class})
+@PrepareForTest({ClientConfigResourceProvider.class, StageUtils.class,ClientConfigResourceProvider.TarUtils.class})
 public class ClientConfigResourceProviderTest {
+  @Before
+  public void setUp() throws Exception {
+    PowerMock.resetAll();
+  }
+
+  @After
+  public void clearAuthentication() {
+    SecurityContextHolder.getContext().setAuthentication(null);
+  }
+
   @Test
   public void testCreateResources() throws Exception {
     Resource.Type type = Resource.Type.ClientConfig;
@@ -165,32 +180,127 @@ public class ClientConfigResourceProviderTest {
   }
 
   @Test
-  public void testGetResources() throws Exception {
+  public void testGetResourcesForAdministrator() throws Exception {
+    testGetResources(TestAuthenticationFactory.createAdministrator());
+  }
+
+  @Test
+  public void testGetResourcesForClusterAdministrator() throws Exception {
+    testGetResources(TestAuthenticationFactory.createClusterAdministrator());
+  }
+
+  @Test
+  public void testGetResourcesForClusterOperator() throws Exception {
+    testGetResources(TestAuthenticationFactory.createClusterOperator());
+  }
+
+  @Test
+  public void testGetResourcesForServiceAdministrator() throws Exception {
+    testGetResources(TestAuthenticationFactory.createServiceAdministrator());
+  }
+
+  @Test
+  public void testGetResourcesForServiceOperator() throws Exception {
+    testGetResources(TestAuthenticationFactory.createServiceOperator());
+  }
+
+  @Test
+  public void testGetResourcesForClusterUser() throws Exception {
+    testGetResources(TestAuthenticationFactory.createClusterUser());
+  }
+
+  @Test(expected = AuthorizationException.class)
+  public void testGetResourcesForNoRoleUser() throws Exception {
+    testGetResources(TestAuthenticationFactory.createNoRoleUser());
+  }
+
+  @Test
+  public void testGetResourcesFromCommonServicesForAdministrator() throws Exception {
+    testGetResourcesFromCommonServices(TestAuthenticationFactory.createAdministrator());
+  }
+
+  @Test
+  public void testGetResourcesFromCommonServicesForClusterAdministrator() throws Exception {
+    testGetResourcesFromCommonServices(TestAuthenticationFactory.createClusterAdministrator());
+  }
+
+  @Test
+  public void testGetResourcesFromCommonServicesForClusterOperator() throws Exception {
+    testGetResourcesFromCommonServices(TestAuthenticationFactory.createClusterOperator());
+  }
+
+  @Test
+  public void testGetResourcesFromCommonServicesForServiceAdministrator() throws Exception {
+    testGetResourcesFromCommonServices(TestAuthenticationFactory.createServiceAdministrator());
+  }
+
+  @Test
+  public void testGetResourcesFromCommonServicesForServiceOperator() throws Exception {
+    testGetResourcesFromCommonServices(TestAuthenticationFactory.createServiceOperator());
+  }
+
+  @Test
+  public void testGetResourcesFromCommonServicesForClusterUser() throws Exception {
+    testGetResourcesFromCommonServices(TestAuthenticationFactory.createClusterUser());
+  }
+
+  @Test(expected = AuthorizationException.class)
+  public void testGetResourcesFromCommonServicesForNoRoleUser() throws Exception {
+    testGetResourcesFromCommonServices(TestAuthenticationFactory.createNoRoleUser());
+  }
+
+  @Test
+  public void testDeleteResources() throws Exception {
     Resource.Type type = Resource.Type.ClientConfig;
 
-    AmbariManagementController managementController = createNiceMock(AmbariManagementController.class);
-    Clusters clusters = createNiceMock(Clusters.class);
+    AmbariManagementController managementController = createMock(AmbariManagementController.class);
 
-    Cluster cluster = createNiceMock(Cluster.class);
-    AmbariMetaInfo ambariMetaInfo = createNiceMock(AmbariMetaInfo.class);
-    StackId stackId = createNiceMock(StackId.class);
-    ComponentInfo componentInfo = createNiceMock(ComponentInfo.class);
-    ServiceInfo serviceInfo = createNiceMock(ServiceInfo.class);
-    CommandScriptDefinition commandScriptDefinition = createNiceMock(CommandScriptDefinition.class);
-    Config clusterConfig = createNiceMock(Config.class);
-    DesiredConfig desiredConfig = createNiceMock(DesiredConfig.class);
-    Host host = createNiceMock(Host.class);
-    Service service = createNiceMock(Service.class);
-    ServiceComponent serviceComponent = createNiceMock(ServiceComponent.class);
-    ServiceComponentHost serviceComponentHost = createNiceMock(ServiceComponentHost.class);
-    ConfigHelper configHelper = createNiceMock(ConfigHelper.class);
+    // replay
+    replay(managementController);
+
+    ResourceProvider provider = AbstractControllerResourceProvider.getResourceProvider(
+        type,
+        managementController);
+
+    Predicate predicate = new PredicateBuilder().property(
+        ClientConfigResourceProvider.COMPONENT_COMPONENT_NAME_PROPERTY_ID).equals("HDFS_CLIENT").toPredicate();
+    try {
+      provider.deleteResources(new RequestImpl(null, null, null, null), predicate);
+      Assert.fail("Expected an UnsupportedOperationException");
+    } catch (SystemException e) {
+      // expected
+    }
+
+    // verify
+    verify(managementController);
+  }
+
+  private void testGetResources(Authentication authentication) throws Exception {
+    Resource.Type type = Resource.Type.ClientConfig;
+
+    AmbariManagementController managementController = PowerMock.createNiceMock(AmbariManagementController.class);
+    Clusters clusters = PowerMock.createNiceMock(Clusters.class);
+
+    Cluster cluster = PowerMock.createNiceMock(Cluster.class);
+    AmbariMetaInfo ambariMetaInfo = PowerMock.createNiceMock(AmbariMetaInfo.class);
+    StackId stackId = PowerMock.createNiceMock(StackId.class);
+    ComponentInfo componentInfo = PowerMock.createNiceMock(ComponentInfo.class);
+    ServiceInfo serviceInfo = PowerMock.createNiceMock(ServiceInfo.class);
+    CommandScriptDefinition commandScriptDefinition = PowerMock.createNiceMock(CommandScriptDefinition.class);
+    Config clusterConfig = PowerMock.createNiceMock(Config.class);
+    DesiredConfig desiredConfig = PowerMock.createNiceMock(DesiredConfig.class);
+    Host host = PowerMock.createNiceMock(Host.class);
+    Service service = PowerMock.createNiceMock(Service.class);
+    ServiceComponent serviceComponent = PowerMock.createNiceMock(ServiceComponent.class);
+    ServiceComponentHost serviceComponentHost = PowerMock.createNiceMock(ServiceComponentHost.class);
+    ConfigHelper configHelper = PowerMock.createNiceMock(ConfigHelper.class);
     Configuration configuration = PowerMock.createStrictMockAndExpectNew(Configuration.class);
 
     File newFile = File.createTempFile("config", ".json", new File("/tmp/"));
     newFile.deleteOnExit();
 
-    Runtime runtime = createMock(Runtime.class);
-    Process process = createNiceMock(Process.class);
+    Runtime runtime = PowerMock.createNiceMock(Runtime.class);
+    Process process = PowerMock.createNiceMock(Process.class);
 
     Map<String, DesiredConfig> desiredConfigMap = new HashMap<>();
     desiredConfigMap.put("hive-site", desiredConfig);
@@ -351,10 +461,16 @@ public class ClientConfigResourceProviderTest {
     InputStream inputStream = new ByteArrayInputStream("some logging info".getBytes());
     expect(process.getInputStream()).andReturn(inputStream);
 
-    ClientConfigResourceProvider.TarUtils tarUtilMock = PowerMockito.mock(ClientConfigResourceProvider.TarUtils.class);
-    whenNew(ClientConfigResourceProvider.TarUtils.class).withAnyArguments().thenReturn(tarUtilMock);
+
+    ClientConfigResourceProvider.TarUtils tarUtilMock =
+            PowerMock.createMock(ClientConfigResourceProvider.TarUtils.class);
+
+    PowerMock.expectNew(ClientConfigResourceProvider.TarUtils.class,
+            EasyMock.anyString(), EasyMock.anyString(), EasyMock.anyObject()).andReturn(tarUtilMock);
+
     tarUtilMock.tarConfigFiles();
-    expectLastCall().once();
+    EasyMock.expectLastCall().once();
+
 
     // create the request
     Request request = PropertyHelper.getReadRequest(ClientConfigResourceProvider.COMPONENT_CLUSTER_NAME_PROPERTY_ID, "c1",
@@ -365,10 +481,12 @@ public class ClientConfigResourceProviderTest {
         equals("c1").and().property(ClientConfigResourceProvider.COMPONENT_SERVICE_NAME_PROPERTY_ID).equals("PIG").toPredicate();
 
     // replay
-    replay(managementController, clusters, cluster, ambariMetaInfo, stackId, componentInfo, commandScriptDefinition,
+    PowerMock.replay(managementController, clusters, cluster, ambariMetaInfo, stackId, componentInfo, commandScriptDefinition,
         clusterConfig, host, service, serviceComponent, serviceComponentHost, serviceInfo, configHelper,
         runtime, process);
     PowerMock.replayAll();
+
+    SecurityContextHolder.getContext().setAuthentication(authentication);
 
     Set<Resource> resources = provider.getResources(request, predicate);
     assertFalse(resources.isEmpty());
@@ -381,8 +499,7 @@ public class ClientConfigResourceProviderTest {
     PowerMock.verifyAll();
   }
 
-  @Test
-  public void testGetResourcesFromCommonServices() throws Exception {
+  private void testGetResourcesFromCommonServices(Authentication authentication) throws Exception {
     Resource.Type type = Resource.Type.ClientConfig;
 
     AmbariManagementController managementController = createNiceMock(AmbariManagementController.class);
@@ -484,6 +601,9 @@ public class ClientConfigResourceProviderTest {
     expect(managementController.getHostComponents(EasyMock.anyObject())).andReturn(responses).anyTimes();
 
     PowerMock.mockStaticPartial(StageUtils.class, "getClusterHostInfo");
+    try (MockedStatic<StageUtils> mockedStageUtils = mockStatic(StageUtils.class)) {
+
+
     Map<String, Set<String>> clusterHostInfo = new HashMap<>();
     Set<String> all_hosts = new HashSet<>(Arrays.asList("Host100", "Host101", "Host102"));
     Set<String> some_hosts = new HashSet<>(Arrays.asList("0-1", "2"));
@@ -498,7 +618,7 @@ public class ClientConfigResourceProviderTest {
       }
     }
     clusterHostInfo.put("all_hosts", all_hosts);
-    expect(StageUtils.getClusterHostInfo(cluster)).andReturn(clusterHostInfo);
+    mockedStageUtils.when(() -> StageUtils.getClusterHostInfo(cluster)).thenReturn(clusterHostInfo);
 
     expect(stackId.getStackName()).andReturn(stackName).anyTimes();
     expect(stackId.getStackVersion()).andReturn(stackVersion).anyTimes();
@@ -553,6 +673,8 @@ public class ClientConfigResourceProviderTest {
         runtime, process);
     PowerMock.replayAll();
 
+    SecurityContextHolder.getContext().setAuthentication(authentication);
+
     Set<Resource> resources = provider.getResources(request, predicate);
     assertFalse(resources.isEmpty());
 
@@ -561,33 +683,8 @@ public class ClientConfigResourceProviderTest {
         clusterConfig, host, service, serviceComponent, serviceComponentHost, serviceInfo, configHelper,
         runtime, process);
     PowerMock.verifyAll();
-  }
-
-
-  @Test
-  public void testDeleteResources() throws Exception {
-    Resource.Type type = Resource.Type.ClientConfig;
-
-    AmbariManagementController managementController = createMock(AmbariManagementController.class);
-
-    // replay
-    replay(managementController);
-
-    ResourceProvider provider = AbstractControllerResourceProvider.getResourceProvider(
-        type,
-        managementController);
-
-    Predicate predicate = new PredicateBuilder().property(
-        ClientConfigResourceProvider.COMPONENT_COMPONENT_NAME_PROPERTY_ID).equals("HDFS_CLIENT").toPredicate();
-    try {
-      provider.deleteResources(new RequestImpl(null, null, null, null), predicate);
-      Assert.fail("Expected an UnsupportedOperationException");
-    } catch (SystemException e) {
-      // expected
     }
-
-    // verify
-    verify(managementController);
   }
+
 
 }

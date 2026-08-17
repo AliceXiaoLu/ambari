@@ -18,12 +18,18 @@
 
 package org.apache.ambari.server.orm.entities;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.Table;
+import java.util.ArrayList;
+import java.util.Collection;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 
 /**
  * Entity representing a KerberosPrincipal.
@@ -48,6 +54,9 @@ public class KerberosPrincipalEntity {
 
   @Column(name = "cached_keytab_path", insertable = true, updatable = true, nullable = true)
   private String cachedKeytabPath = null;
+
+  @OneToMany(mappedBy = "kerberosPrincipalEntity", cascade = CascadeType.REMOVE, fetch = FetchType.EAGER)
+  private Collection<KerberosKeytabPrincipalEntity> kerberosKeytabPrincipalEntities = new ArrayList<>();
 
   /**
    * Constructs an empty KerberosPrincipalEntity
@@ -122,4 +131,17 @@ public class KerberosPrincipalEntity {
     this.cachedKeytabPath = cachedKeytabPath;
   }
 
+  public Collection<KerberosKeytabPrincipalEntity> getKerberosKeytabPrincipalEntities() {
+    return kerberosKeytabPrincipalEntities;
+  }
+
+  public void setKerberosKeytabPrincipalEntities(Collection<KerberosKeytabPrincipalEntity> kerberosKeytabPrincipalEntities) {
+    this.kerberosKeytabPrincipalEntities = kerberosKeytabPrincipalEntities;
+  }
+
+  public void addKerberosKeytabPrincipal(KerberosKeytabPrincipalEntity kerberosKeytabPrincipalEntity) {
+    if (!kerberosKeytabPrincipalEntities.contains(kerberosKeytabPrincipalEntity)) {
+      kerberosKeytabPrincipalEntities.add(kerberosKeytabPrincipalEntity);
+    }
+  }
 }

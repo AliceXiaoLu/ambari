@@ -26,7 +26,7 @@ import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlElementWrapper;
 import javax.xml.bind.annotation.XmlElements;
 
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 /**
  * Represents stack component dependency information.
@@ -42,6 +42,13 @@ public class DependencyInfo {
    * The scope of the dependency.  Either "cluster" or "host".
    */
   private String scope;
+
+  /**
+   * The type of the dependency.  Either "inclusive" or "exclusive".
+   * "inclusive" means the dependent component MUST be co-hosted or installed on the same cluster
+   * "exclusive" means the dependent component CAN'T be co-hosted or installed on the same cluster
+   */
+  private String type = "inclusive";
 
   /**
    * Service name of the dependency.
@@ -173,11 +180,21 @@ public class DependencyInfo {
     return !CollectionUtils.isEmpty(dependencyConditions);
   }
 
+  public String getType() {
+    return type;
+  }
+
+  public void setType(String type) {
+    this.type = type;
+  }
+
   @Override
   public String toString() {
+    String autoDeployString = m_autoDeploy == null? "false" : String.valueOf(m_autoDeploy.isEnabled());
     return "DependencyInfo[name=" + getName() +
            ", scope=" + getScope() +
-           ", auto-deploy=" + m_autoDeploy.isEnabled() +
+           ", type=" + getType() +
+           ", auto-deploy=" + autoDeployString +
            "]";
   }
 
@@ -192,6 +209,7 @@ public class DependencyInfo {
     if (m_autoDeploy != null ? !m_autoDeploy.equals(that.m_autoDeploy) : that.m_autoDeploy != null) return false;
     if (name != null ? !name.equals(that.name) : that.name != null) return false;
     if (scope != null ? !scope.equals(that.scope) : that.scope != null) return false;
+    if (type != null ? !type.equals(that.type) : that.type != null) return false;
     if (serviceName != null ? !serviceName.equals(that.serviceName) : that.serviceName != null) return false;
 
     return true;

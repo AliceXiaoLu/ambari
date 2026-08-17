@@ -37,7 +37,7 @@ import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.kerberos.KerberosDescriptor;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,7 +104,7 @@ public class PrepareDisableKerberosServerAction extends AbstractPrepareKerberosS
 
     // Calculate the current host-specific configurations. These will be used to replace
     // variables within the Kerberos descriptor data
-    Map<String, Map<String, String>> configurations = kerberosHelper.calculateConfigurations(cluster, null, kerberosDescriptor, false, false);
+    Map<String, Map<String, String>> configurations = kerberosHelper.calculateConfigurations(cluster, null, kerberosDescriptor, false, false, null);
 
     processServiceComponentHosts(cluster, kerberosDescriptor, schToProcess, identityFilter, dataDirectory,
         configurations, kerberosConfigurations, includeAmbariIdentity, propertiesToIgnore);
@@ -203,10 +203,15 @@ public class PrepareDisableKerberosServerAction extends AbstractPrepareKerberosS
       kerberosHelper.applyStackAdvisorUpdates(cluster, services, configurations, kerberosConfigurations,
           propertiesToIgnore, configurationsToRemove, false);
 
-      processConfigurationChanges(dataDirectory, kerberosConfigurations, configurationsToRemove);
+      processConfigurationChanges(dataDirectory, kerberosConfigurations, configurationsToRemove, kerberosDescriptor, getUpdateConfigurationPolicy(commandParameters));
     }
 
     return createCommandReport(0, HostRoleStatus.COMPLETED, "{}", actionLog.getStdOut(), actionLog.getStdErr());
+  }
+
+  @Override
+  protected boolean pruneServiceFilter() {
+    return false;
   }
 }
 

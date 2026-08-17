@@ -20,14 +20,14 @@ package org.apache.ambari.server.configuration.spring;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.servlet.ServletContext;
+import jakarta.servlet.ServletContext;
 
+import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.agent.AgentSessionManager;
 import org.apache.ambari.server.agent.stomp.AmbariSubscriptionRegistry;
 import org.apache.ambari.server.api.AmbariSendToMethodReturnValueHandler;
 import org.apache.ambari.server.events.DefaultMessageEmitter;
-import org.apache.ambari.server.events.listeners.requests.STOMPUpdateListener;
-import org.eclipse.jetty.websocket.server.WebSocketServerFactory;
+import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,21 +63,21 @@ public class RootStompConfig {
   }
 
   @Bean
-  public STOMPUpdateListener requestSTOMPListener(Injector injector) {
-    return new STOMPUpdateListener(injector);
-  }
-
-  @Bean
-  public DefaultMessageEmitter defaultMessageSender(Injector injector) {
-    return new DefaultMessageEmitter(injector.getInstance(AgentSessionManager.class), brokerTemplate);
+  public DefaultMessageEmitter defaultMessageEmitter(Injector injector) {
+    org.apache.ambari.server.configuration.Configuration configuration =
+        injector.getInstance(org.apache.ambari.server.configuration.Configuration.class);
+    return new DefaultMessageEmitter(injector.getInstance(AgentSessionManager.class),
+        brokerTemplate,
+        injector.getInstance(AmbariEventPublisher.class),
+        configuration.getExecutionCommandsRetryCount(),
+        configuration.getExecutionCommandsRetryInterval());
   }
 
   @Bean
   public DefaultHandshakeHandler handshakeHandler() {
-
-    return new DefaultHandshakeHandler(
-        new JettyRequestUpgradeStrategy(new WebSocketServerFactory(servletContext)));
+    return new DefaultHandshakeHandler(new JettyRequestUpgradeStrategy());
   }
+
 
   @Autowired
   public void configureRegistryCacheSize(SimpleBrokerMessageHandler simpleBrokerMessageHandler) throws NoSuchFieldException, IllegalAccessException {
@@ -115,12 +115,9 @@ public class RootStompConfig {
     @MessageExceptionHandler(Exception.class)
     @SendToUser("/")
     public ErrorMessage handle(Exception e) {
-
-      //LOG.error("Exception caught while processing message: " + e.getMessage(), e);
-      return new ErrorMessage(e);
+      LOG.error("Exception caught while processing a message: " + e.getMessage(), e);
+      return new ErrorMessage(new AmbariException(e.getMessage()));
     }
-
-
   }
 
 }

@@ -21,7 +21,9 @@ package org.apache.ambari.server.api.services.stackadvisor.validations;
 import java.util.Set;
 
 import org.apache.ambari.server.api.services.stackadvisor.StackAdvisorResponse;
-import org.codehaus.jackson.annotate.JsonProperty;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.MoreObjects;
 
 /**
  * Validation response POJO.
@@ -115,6 +117,19 @@ public class ValidationResponse extends StackAdvisorResponse {
 
     public void setConfigName(String configName) {
       this.configName = configName;
+    }
+
+    @Override
+    public String toString() {
+      return MoreObjects.toStringHelper(this)
+        .add("type", type)
+        .add("level", level)
+        .add("message", message)
+        .add("componentName", componentName)
+        .add("host", host)
+        .add("configType", configType)
+        .add("configName", configName)
+        .toString();
     }
   }
 

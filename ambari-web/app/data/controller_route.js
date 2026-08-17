@@ -84,5 +84,13 @@ module.exports = [
   {
     wizardControllerName: App.router.get('nameNodeFederationWizardController.name'),
     route: 'main.services.enableNameNodeFederation'
+  },
+  {
+    wizardControllerName: App.router.get('routerFederationWizardController.name'),
+    route: 'main.services.enableRouterFederation'
+  },
+  {
+    wizardControllerName: App.router.get('manageJournalNodeWizardController.name'),
+    route: 'main.services.manageJournalNode'
   }
 ];

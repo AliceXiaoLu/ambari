@@ -29,11 +29,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Order;
-import javax.persistence.metamodel.SingularAttribute;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Order;
+import jakarta.persistence.metamodel.SingularAttribute;
 
 import org.apache.ambari.annotations.Experimental;
 import org.apache.ambari.annotations.ExperimentalFeature;
@@ -351,7 +351,7 @@ public class AlertsDAO implements Cleanable {
     PredicateHelper.visit(request.Predicate, visitor);
 
     CriteriaQuery<AlertHistoryEntity> query = visitor.getCriteriaQuery();
-    javax.persistence.criteria.Predicate jpaPredicate = visitor.getJpaPredicate();
+    jakarta.persistence.criteria.Predicate jpaPredicate = visitor.getJpaPredicate();
 
     if (null != jpaPredicate) {
       query.where(jpaPredicate);
@@ -389,7 +389,7 @@ public class AlertsDAO implements Cleanable {
     PredicateHelper.visit(request.Predicate, visitor);
 
     CriteriaQuery<AlertCurrentEntity> query = visitor.getCriteriaQuery();
-    javax.persistence.criteria.Predicate jpaPredicate = visitor.getJpaPredicate();
+    jakarta.persistence.criteria.Predicate jpaPredicate = visitor.getJpaPredicate();
 
     if (null != jpaPredicate) {
       query.where(jpaPredicate);
@@ -985,8 +985,18 @@ public class AlertsDAO implements Cleanable {
    *          the alert to merge (not {@code null}).
    * @return the updated alert with merged content (never {@code null}).
    */
-  @Transactional
   public AlertHistoryEntity merge(AlertHistoryEntity alert) {
+    if (m_configuration.isAlertCacheEnabled()) {
+      synchronized (this) {
+        return mergeTransactional(alert);
+      }
+    } else {
+      return mergeTransactional(alert);
+    }
+  }
+
+  @Transactional
+  protected AlertHistoryEntity mergeTransactional(AlertHistoryEntity alert) {
     return m_entityManagerProvider.get().merge(alert);
   }
 
@@ -1033,8 +1043,18 @@ public class AlertsDAO implements Cleanable {
    *          the current alert to merge (not {@code null}).
    * @return the updated current alert with merged content (never {@code null}).
    */
-  @Transactional
   public AlertCurrentEntity merge(AlertCurrentEntity alert) {
+    if (m_configuration.isAlertCacheEnabled()) {
+      synchronized (this) {
+        return mergeTransactional(alert);
+      }
+    } else {
+      return mergeTransactional(alert);
+    }
+  }
+
+  @Transactional
+  protected AlertCurrentEntity mergeTransactional(AlertCurrentEntity alert) {
     // perform the JPA merge
     alert = m_entityManagerProvider.get().merge(alert);
 
@@ -1174,12 +1194,18 @@ public class AlertsDAO implements Cleanable {
    * Writes all cached {@link AlertCurrentEntity} instances to the database and
    * clears the cache.
    */
-  @Transactional
   public void flushCachedEntitiesToJPA() {
-    if (!m_configuration.isAlertCacheEnabled()) {
+    if (m_configuration.isAlertCacheEnabled()) {
+      synchronized (this) {
+        flushCachedEntitiesToJPATransactional();
+      }
+    } else {
       LOG.warn("Unable to flush cached alerts to JPA because caching is not enabled");
-      return;
     }
+  }
+
+  @Transactional
+  protected void flushCachedEntitiesToJPATransactional() {
 
     // capture for logging purposes
     long cachedEntityCount = m_currentAlertCache.size();
@@ -1212,6 +1238,10 @@ public class AlertsDAO implements Cleanable {
       AlertCacheKey key = AlertCacheKey.build(alert);
       AlertCurrentEntity cachedEntity = m_currentAlertCache.getIfPresent(key);
       if (null != cachedEntity) {
+        if (cachedEntity.getAlertHistory() == null) {
+          LOG.warn("There is current entity with null history in the cache, currentId: {}, persisted historyId: {}",
+              cachedEntity.getAlertId(), alert.getHistoryId());
+        }
         alert = cachedEntity;
       }
 
@@ -1242,7 +1272,7 @@ public class AlertsDAO implements Cleanable {
 
   /**
    * The {@link HistoryPredicateVisitor} is used to convert an Ambari
-   * {@link Predicate} into a JPA {@link javax.persistence.criteria.Predicate}.
+   * {@link Predicate} into a JPA {@link jakarta.persistence.criteria.Predicate}.
    */
   private final class HistoryPredicateVisitor extends
       JpaPredicateVisitor<AlertHistoryEntity> {
@@ -1275,7 +1305,7 @@ public class AlertsDAO implements Cleanable {
 
   /**
    * The {@link CurrentPredicateVisitor} is used to convert an Ambari
-   * {@link Predicate} into a JPA {@link javax.persistence.criteria.Predicate}.
+   * {@link Predicate} into a JPA {@link jakarta.persistence.criteria.Predicate}.
    */
   private final class CurrentPredicateVisitor extends
       JpaPredicateVisitor<AlertCurrentEntity> {
@@ -1582,6 +1612,43 @@ public class AlertsDAO implements Cleanable {
         timestamp, entityType, affectedRows);
 
     return affectedRows;
+  }
+
+  /**
+   * Saves alert and alert history entities in single transaction
+   * @param toMerge - merge alert only
+   * @param toCreateHistoryAndMerge - create new history, merge alert
+   */
+  public void saveEntities(List<AlertCurrentEntity> toMerge,
+                                 List<AlertCurrentEntity> toCreateHistoryAndMerge) {
+    if (m_configuration.isAlertCacheEnabled()) {
+      synchronized (this) {
+        saveEntitiesTransactional(toMerge, toCreateHistoryAndMerge);
+      }
+    } else {
+      saveEntitiesTransactional(toMerge, toCreateHistoryAndMerge);
+    }
+  }
+
+  @Transactional
+  protected void saveEntitiesTransactional(List<AlertCurrentEntity> toMerge,
+                    List<AlertCurrentEntity> toCreateHistoryAndMerge) {
+    for (AlertCurrentEntity entity : toMerge) {
+      merge(entity, m_configuration.isAlertCacheEnabled());
+    }
+
+    for (AlertCurrentEntity entity : toCreateHistoryAndMerge) {
+      create(entity.getAlertHistory());
+      merge(entity);
+
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Alert State Merged: CurrentId {}, CurrentTimestamp {}, HistoryId {}, HistoryState {}",
+            entity.getAlertId(), entity.getLatestTimestamp(),
+            entity.getAlertHistory().getAlertId(),
+            entity.getAlertHistory().getAlertState());
+      }
+    }
   }
 
 }

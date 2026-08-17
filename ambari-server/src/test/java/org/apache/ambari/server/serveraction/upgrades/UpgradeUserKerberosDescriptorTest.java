@@ -38,15 +38,15 @@ import org.apache.ambari.server.orm.dao.ArtifactDAO;
 import org.apache.ambari.server.orm.entities.ArtifactEntity;
 import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
 import org.apache.ambari.server.orm.entities.UpgradeEntity;
+import org.apache.ambari.server.stack.upgrade.Direction;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeContext;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeContextFactory;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.StackId;
-import org.apache.ambari.server.state.UpgradeContext;
-import org.apache.ambari.server.state.UpgradeContextFactory;
 import org.apache.ambari.server.state.kerberos.KerberosDescriptor;
 import org.apache.ambari.server.state.kerberos.KerberosDescriptorFactory;
 import org.apache.ambari.server.state.kerberos.KerberosDescriptorUpdateHelper;
-import org.apache.ambari.server.state.stack.upgrade.Direction;
 import org.easymock.Capture;
 import org.easymock.EasyMock;
 import org.junit.Before;
@@ -137,7 +137,7 @@ public class UpgradeUserKerberosDescriptorTest {
     KerberosDescriptor updatedKerberosDescriptor = EasyMock.createMock(KerberosDescriptor.class);
 
     PowerMockito.mockStatic(KerberosDescriptorUpdateHelper.class);
-    PowerMockito.when(KerberosDescriptorUpdateHelper.updateUserKerberosDescriptor(previousDescriptor, newDescriptor, userDescriptor)).thenReturn(updatedKerberosDescriptor);
+    PowerMockito.when(KerberosDescriptorUpdateHelper.updateUserKerberosDescriptor(previousDescriptor, newDescriptor, userDescriptor)).thenAnswer(invocation -> updatedKerberosDescriptor);
     expect(kerberosDescriptorFactory.createInstance((Map)null)).andReturn(userDescriptor).atLeastOnce();
     expect(ambariMetaInfo.getKerberosDescriptor("HDP","2.5", false)).andReturn(newDescriptor).atLeastOnce();
     expect(ambariMetaInfo.getKerberosDescriptor("HDP","2.4",false)).andReturn(previousDescriptor).atLeastOnce();

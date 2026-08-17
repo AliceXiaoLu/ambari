@@ -23,28 +23,28 @@ import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
 
-import javax.persistence.Basic;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EntityManager;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.Lob;
-import javax.persistence.ManyToMany;
-import javax.persistence.ManyToOne;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.PreRemove;
-import javax.persistence.QueryHint;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.UniqueConstraint;
+import jakarta.persistence.Basic;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.PreRemove;
+import jakarta.persistence.QueryHint;
+import jakarta.persistence.Table;
+import jakarta.persistence.TableGenerator;
+import jakarta.persistence.UniqueConstraint;
 
 import org.apache.ambari.server.state.AlertState;
 import org.apache.ambari.server.state.alert.Scope;
@@ -310,7 +310,7 @@ public class AlertDefinitionEntity {
    * otherwise.
    */
   public boolean getEnabled() {
-    return enabled == Integer.valueOf(0) ? false : true;
+    return !Objects.equals(enabled, 0);
   }
 
   /**
@@ -332,7 +332,7 @@ public class AlertDefinitionEntity {
    * otherwise.
    */
   public boolean isHostIgnored() {
-    return ignoreHost == Integer.valueOf(0) ? false : true;
+    return !Objects.equals(ignoreHost, 0);
   }
 
   /**
@@ -530,7 +530,7 @@ public class AlertDefinitionEntity {
    *         value.
    */
   public boolean isRepeatToleranceEnabled() {
-    return repeatToleranceEnabled == Short.valueOf((short) 0) ? false : true;
+    return !Objects.equals(repeatToleranceEnabled, (short) 0);
   }
 
   /**

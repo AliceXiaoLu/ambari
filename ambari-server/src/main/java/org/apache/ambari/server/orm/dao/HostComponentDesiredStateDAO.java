@@ -18,17 +18,21 @@
 
 package org.apache.ambari.server.orm.dao;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import javax.persistence.EntityManager;
-import javax.persistence.NoResultException;
-import javax.persistence.TypedQuery;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.NoResultException;
+import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.entities.HostComponentDesiredStateEntity;
 import org.apache.ambari.server.orm.entities.HostEntity;
+import org.apache.ambari.server.orm.helpers.SQLConstants;
+import org.apache.ambari.server.orm.helpers.SQLOperations;
 
+import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.Singleton;
@@ -124,13 +128,18 @@ public class HostComponentDesiredStateDAO {
 
   @RequiresSession
   public List<HostComponentDesiredStateEntity> findByHostsAndCluster(Collection<Long> hostIds, Long clusterId) {
-    final TypedQuery<HostComponentDesiredStateEntity> query = entityManagerProvider.get()
-      .createNamedQuery("HostComponentDesiredStateEntity.findByHostsAndCluster", HostComponentDesiredStateEntity.class);
+    final EntityManager entityManager = entityManagerProvider.get();
+    final TypedQuery<HostComponentDesiredStateEntity> query = entityManager.
+        createNamedQuery("HostComponentDesiredStateEntity.findByHostsAndCluster", HostComponentDesiredStateEntity.class);
 
-    query.setParameter("hostIds", hostIds);
-    query.setParameter("clusterId", clusterId);
-
-    return daoUtils.selectList(query);
+    final List<HostComponentDesiredStateEntity> result = new ArrayList<>();
+    SQLOperations.batch(hostIds, SQLConstants.IN_ARGUMENT_MAX_SIZE, (chunk, currentBatch, totalBatches, totalSize) -> {
+      query.setParameter("hostIds", chunk);
+      query.setParameter("clusterId", clusterId);
+      result.addAll(daoUtils.selectList(query));
+      return 0;
+    });
+    return Lists.newArrayList(result);
   }
 
   @Transactional

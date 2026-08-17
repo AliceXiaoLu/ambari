@@ -27,18 +27,21 @@ import java.util.stream.Collectors;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.ServiceComponentNotFoundException;
+import org.apache.ambari.server.ServiceNotFoundException;
 import org.apache.ambari.server.actionmanager.HostRoleStatus;
 import org.apache.ambari.server.agent.CommandReport;
 import org.apache.ambari.server.events.listeners.upgrade.StackVersionListener;
 import org.apache.ambari.server.stack.MasterHostResolver;
+import org.apache.ambari.server.stack.upgrade.AddComponentTask;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeContext;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.Service;
 import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.State;
-import org.apache.ambari.server.state.UpgradeContext;
-import org.apache.ambari.server.state.stack.upgrade.AddComponentTask;
+
+import com.google.gson.Gson;
 
 /**
  * The {@link AddComponentAction} is used to add a component during an upgrade.
@@ -72,7 +75,19 @@ public class AddComponentAction extends AbstractUpgradeServerAction {
     String serializedJson = commandParameters.get(
         AddComponentTask.PARAMETER_SERIALIZED_ADD_COMPONENT_TASK);
 
+    Gson gson = getGson();
     AddComponentTask task = gson.fromJson(serializedJson, AddComponentTask.class);
+
+    final Service service;
+    try {
+      service = cluster.getService(task.service);
+    } catch (ServiceNotFoundException snfe) {
+      return createCommandReport(0, HostRoleStatus.COMPLETED, "{}", "",
+          String.format(
+              "%s was not installed in this cluster since %s is not an installed service.",
+              task.component, task.service));
+    }
+
 
     // build the list of candidate hosts
     Collection<Host> candidates = MasterHostResolver.getCandidateHosts(cluster, task.hosts,
@@ -81,22 +96,16 @@ public class AddComponentAction extends AbstractUpgradeServerAction {
     if (candidates.isEmpty()) {
       return createCommandReport(0, HostRoleStatus.FAILED, "{}", "", String.format(
           "Unable to add a new component to the cluster as there are no hosts which contain %s's %s",
-          task.service, task.component));
-    }
-
-    Service service = cluster.getService(task.service);
-    if (null == service) {
-      return createCommandReport(0, HostRoleStatus.FAILED, "{}", "",
-          String.format("Unable to add %s since %s is not installed in this cluster.",
-              task.component, task.service));
+          task.hostService, task.hostComponent));
     }
 
     // create the component if it doesn't exist in the service yet
     ServiceComponent serviceComponent;
     try {
-       serviceComponent = service.getServiceComponent(task.component);
-    } catch( ServiceComponentNotFoundException scnfe ) {
+      serviceComponent = service.getServiceComponent(task.component);
+    } catch (ServiceComponentNotFoundException scnfe) {
       serviceComponent = service.addServiceComponent(task.component);
+      serviceComponent.setDesiredState(State.INSTALLED);
     }
 
     StringBuilder buffer = new StringBuilder(String.format(

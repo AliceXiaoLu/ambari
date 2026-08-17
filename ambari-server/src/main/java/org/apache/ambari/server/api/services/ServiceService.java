@@ -21,18 +21,18 @@ package org.apache.ambari.server.api.services;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.ws.rs.DELETE;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.PUT;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
 import org.apache.ambari.server.api.resources.ResourceInstance;
 import org.apache.ambari.server.controller.ClusterServiceArtifactResponse;
@@ -112,7 +112,6 @@ public class ServiceService extends BaseService {
    * @return service collection resource representation
    */
   @GET
-  @Path("") // This is needed if class level path is not present otherwise no Swagger docs will be generated for this method
   @Produces(MediaType.TEXT_PLAIN)
   @ApiOperation(value = "Get all services",
       nickname = "ServiceService#getServices",
@@ -121,10 +120,10 @@ public class ServiceService extends BaseService {
       responseContainer = RESPONSE_CONTAINER_LIST)
   @ApiImplicitParams({
       @ApiImplicitParam(name = QUERY_FIELDS, value = QUERY_FILTER_DESCRIPTION,
-          defaultValue = "ServiceInfo/service_name, ServiceInfo/cluster_name",
+          defaultValue = "ServiceInfo/service_name,ServiceInfo/cluster_name",
           dataType = DATA_TYPE_STRING, paramType = PARAM_TYPE_QUERY),
       @ApiImplicitParam(name = QUERY_SORT, value = QUERY_SORT_DESCRIPTION,
-          defaultValue = "ServiceInfo/service_name.asc, ServiceInfo/cluster_name.asc",
+          defaultValue = "ServiceInfo/service_name.asc,ServiceInfo/cluster_name.asc",
           dataType = DATA_TYPE_STRING, paramType = PARAM_TYPE_QUERY),
       @ApiImplicitParam(name = QUERY_PAGE_SIZE, value = QUERY_PAGE_SIZE_DESCRIPTION, defaultValue = DEFAULT_PAGE_SIZE, dataType = DATA_TYPE_INT, paramType = PARAM_TYPE_QUERY),
       @ApiImplicitParam(name = QUERY_FROM, value = QUERY_FROM_DESCRIPTION, defaultValue = DEFAULT_FROM, dataType = DATA_TYPE_STRING, paramType = PARAM_TYPE_QUERY),
@@ -153,7 +152,7 @@ public class ServiceService extends BaseService {
   @Path("{serviceName}")
   @Produces(MediaType.TEXT_PLAIN)
   @ApiOperation(value = "Creates a service",
-      nickname = "ServiceService#createServices"
+      nickname = "ServiceService#createService"
   )
   @ApiImplicitParams({
       @ApiImplicitParam(dataType = SERVICE_REQUEST_TYPE, paramType = PARAM_TYPE_BODY)
@@ -176,7 +175,7 @@ public class ServiceService extends BaseService {
 
   /**
    * Handles: POST /clusters/{clusterId}/services
-   * Create multiple services.
+   * Create services, possibly more than one.
    *
    * @param body        http body
    * @param headers     http headers
@@ -185,8 +184,8 @@ public class ServiceService extends BaseService {
    */
   @POST
   @Produces(MediaType.TEXT_PLAIN)
-  @ApiOperation(value = "Creates a service",
-      nickname = "ServiceService#createService"
+  @ApiOperation(value = "Creates services",
+      nickname = "ServiceService#createServices"
   )
   @ApiImplicitParams({
       @ApiImplicitParam(dataType = SERVICE_REQUEST_TYPE, paramType = PARAM_TYPE_BODY, allowMultiple = true)
@@ -604,7 +603,7 @@ public class ServiceService extends BaseService {
   @Path("{serviceName}/alert_history")
   // TODO: find a way to handle this with Swagger (refactor or custom annotation?)
   public AlertHistoryService getAlertHistoryService(
-      @Context javax.ws.rs.core.Request request,
+      @Context jakarta.ws.rs.core.Request request,
       @PathParam("serviceName") String serviceName) {
 
     return new AlertHistoryService(m_clusterName, serviceName, null);

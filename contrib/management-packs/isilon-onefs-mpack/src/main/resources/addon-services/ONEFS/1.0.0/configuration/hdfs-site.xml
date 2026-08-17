@@ -20,14 +20,9 @@
 <configuration supports_final="true">
   <property>
     <name>dfs.webhdfs.enabled</name>
-    <value>false</value>
+    <value>true</value>
     <display-name>WebHDFS enabled</display-name>
     <description>Whether to enable WebHDFS feature</description>
-    <final>true</final>
-    <value-attributes>
-      <type>boolean</type>
-      <overridable>false</overridable>
-    </value-attributes>
     <on-ambari-upgrade add="true"/>
   </property>
   <property>

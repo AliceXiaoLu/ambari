@@ -32,13 +32,14 @@ import org.apache.ambari.server.agent.CommandReport;
 import org.apache.ambari.server.controller.KerberosHelper;
 import org.apache.ambari.server.controller.RootComponent;
 import org.apache.ambari.server.controller.RootService;
+import org.apache.ambari.server.controller.UpdateConfigurationPolicy;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.kerberos.KerberosComponentDescriptor;
 import org.apache.ambari.server.state.kerberos.KerberosDescriptor;
 import org.apache.ambari.server.state.kerberos.KerberosIdentityDescriptor;
 import org.apache.ambari.server.state.kerberos.KerberosServiceDescriptor;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -113,9 +114,9 @@ public class PrepareKerberosIdentitiesServerAction extends AbstractPrepareKerber
       // If we are including the Ambari identity; then ensure that if a service/component filter is set,
       // it contains the AMBARI/AMBARI_SERVER component; else do not include the Ambari service identity.
       includeAmbariIdentity &= (serviceComponentFilter.get(RootService.AMBARI.name()) != null)
-        && serviceComponentFilter.get(RootService.AMBARI.name()).contains(RootComponent.AMBARI_SERVER.name());
+          && serviceComponentFilter.get(RootService.AMBARI.name()).contains(RootComponent.AMBARI_SERVER.name());
 
-      if((operationType != OperationType.DEFAULT)) {
+      if ((operationType != OperationType.DEFAULT)) {
         // Update the identity filter, if necessary
         identityFilter = updateIdentityFilter(kerberosDescriptor, identityFilter, serviceComponentFilter);
       }
@@ -123,18 +124,27 @@ public class PrepareKerberosIdentitiesServerAction extends AbstractPrepareKerber
 
     // Calculate the current host-specific configurations. These will be used to replace
     // variables within the Kerberos descriptor data
-    Map<String, Map<String, String>> configurations = kerberosHelper.calculateConfigurations(cluster, null, kerberosDescriptor, false, false);
+    Map<String, Map<String, String>> configurations = kerberosHelper.calculateConfigurations(cluster, null, kerberosDescriptor, false, false, null);
 
     processServiceComponentHosts(cluster, kerberosDescriptor, schToProcess, identityFilter, dataDirectory,
         configurations, kerberosConfigurations, includeAmbariIdentity, propertiesToIgnore);
 
-    kerberosHelper.applyStackAdvisorUpdates(cluster, services, configurations, kerberosConfigurations,
-        propertiesToIgnore, propertiesToRemove, true);
+    UpdateConfigurationPolicy updateConfigurationPolicy = getUpdateConfigurationPolicy(commandParameters);
 
-    if ("true".equalsIgnoreCase(getCommandParameterValue(commandParameters, UPDATE_CONFIGURATIONS))) {
-      Map<String, Map<String, String>> calculatedConfigurations = kerberosHelper.calculateConfigurations(cluster, null, kerberosDescriptor, false, false);
-      processAuthToLocalRules(cluster, calculatedConfigurations, kerberosDescriptor, schToProcess, kerberosConfigurations, getDefaultRealm(commandParameters), false);
-      processConfigurationChanges(dataDirectory, kerberosConfigurations, propertiesToRemove);
+    if (updateConfigurationPolicy != UpdateConfigurationPolicy.NONE) {
+      if (updateConfigurationPolicy.invokeStackAdvisor()) {
+        kerberosHelper.applyStackAdvisorUpdates(cluster, services, configurations, kerberosConfigurations,
+            propertiesToIgnore, propertiesToRemove, true);
+      }
+
+      // TODO: Determine if we need to do this again since it is done a few lines above.
+      Map<String, Map<String, String>> calculatedConfigurations = kerberosHelper.calculateConfigurations(cluster, null, kerberosDescriptor, false, false, null);
+
+      if (updateConfigurationPolicy.applyIdentityChanges()) {
+        processAuthToLocalRules(cluster, calculatedConfigurations, kerberosDescriptor, schToProcess, kerberosConfigurations, getDefaultRealm(commandParameters), false);
+      }
+
+      processConfigurationChanges(dataDirectory, kerberosConfigurations, propertiesToRemove, kerberosDescriptor, updateConfigurationPolicy);
     }
 
     return createCommandReport(0, HostRoleStatus.COMPLETED, "{}", actionLog.getStdOut(), actionLog.getStdErr());
@@ -247,7 +257,8 @@ public class PrepareKerberosIdentitiesServerAction extends AbstractPrepareKerber
   /**
    * Add the path of each identity in the collection of identities to the supplied identity filter
    * if that identity is not a reference to another identity or if references are allowed.
-   *  @param identityDescriptors the collection of identity descriptors to process
+   *
+   * @param identityDescriptors the collection of identity descriptors to process
    * @param identityFilter      the identity filter to modify
    * @param skipReferences
    */

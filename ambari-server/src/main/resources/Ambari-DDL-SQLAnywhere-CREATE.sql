@@ -16,11 +16,30 @@
 -- limitations under the License.
 --
 
+CREATE TABLE registries(
+ id BIGINT NOT NULL,
+ registy_name VARCHAR(255) NOT NULL,
+ registry_type VARCHAR(255) NOT NULL,
+ registry_uri VARCHAR(255) NOT NULL,
+ CONSTRAINT PK_registries PRIMARY KEY (id));
+
+CREATE TABLE mpacks(
+ id BIGINT NOT NULL,
+ mpack_name VARCHAR(255) NOT NULL,
+ mpack_version VARCHAR(255) NOT NULL,
+ mpack_uri VARCHAR(255),
+ registry_id BIGINT,
+ CONSTRAINT PK_mpacks PRIMARY KEY (id),
+ CONSTRAINT uni_mpack_name_version UNIQUE(mpack_name, mpack_version),
+ CONSTRAINT FK_registries FOREIGN KEY (registry_id) REFERENCES registries(id));
+
 CREATE TABLE stack(
   stack_id NUMERIC(19) NOT NULL,
   stack_name VARCHAR(255) NOT NULL,
   stack_version VARCHAR(255) NOT NULL,
+  mpack_id BIGINT,
   CONSTRAINT PK_stack PRIMARY KEY (stack_id),
+  CONSTRAINT FK_mpacks FOREIGN KEY (mpack_id) REFERENCES mpacks(id),
   CONSTRAINT UQ_stack UNIQUE (stack_name, stack_version));
 
 CREATE TABLE extension(
@@ -86,7 +105,7 @@ CREATE TABLE clusterconfig (
 CREATE TABLE ambari_configuration (
   category_name VARCHAR(100) NOT NULL,
   property_name VARCHAR(100) NOT NULL,
-  property_value VARCHAR(2048),
+  property_value VARCHAR(4000) NOT NULL,
   CONSTRAINT PK_ambari_configuration PRIMARY KEY (category_name, property_name));
 
 CREATE TABLE serviceconfig (
@@ -224,6 +243,7 @@ CREATE TABLE hostcomponentdesiredstate (
   service_name VARCHAR(255) NOT NULL,
   admin_state VARCHAR(32),
   maintenance_state VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+  blueprint_provisioning_state VARCHAR(255) DEFAULT 'NONE',
   restart_required BIT NOT NULL DEFAULT 0,
   CONSTRAINT PK_hostcomponentdesiredstate PRIMARY KEY (id),
   CONSTRAINT UQ_hcdesiredstate_name UNIQUE (component_name, service_name, host_id, cluster_id),
@@ -299,7 +319,7 @@ CREATE TABLE users (
   active_widget_layouts VARCHAR(1024) DEFAULT NULL,
   display_name VARCHAR(255) NOT NULL,
   local_username VARCHAR(255) NOT NULL,
-  create_time TIMESTAMP DEFAULT NOW(),
+  create_time NUMERIC(19) NOT NULL,
   version NUMERIC(19) NOT NULL DEFAULT 0,
   CONSTRAINT PK_users PRIMARY KEY (user_id),
   CONSTRAINT FK_users_principal_id FOREIGN KEY (principal_id) REFERENCES adminprincipal(principal_id),
@@ -310,8 +330,8 @@ CREATE TABLE user_authentication (
   user_id INTEGER NOT NULL,
   authentication_type VARCHAR(50) NOT NULL,
   authentication_key VARCHAR(2048),
-  create_time TIMESTAMP DEFAULT NOW(),
-  update_time TIMESTAMP DEFAULT NOW(),
+  create_time NUMERIC(19) NOT NULL,
+  update_time NUMERIC(19) NOT NULL,
   CONSTRAINT PK_user_authentication PRIMARY KEY (user_authentication_id),
   CONSTRAINT FK_user_authentication_users FOREIGN KEY (user_id) REFERENCES users (user_id)
 );
@@ -342,6 +362,8 @@ CREATE TABLE requestschedule (
   status VARCHAR(255),
   batch_separation_seconds smallint,
   batch_toleration_limit smallint,
+  batch_toleration_limit_per_batch smallint,
+  pause_after_first_batch VARCHAR(1),
   authenticated_user_id INTEGER,
   create_user VARCHAR(255),
   create_timestamp NUMERIC(19),
@@ -865,6 +887,7 @@ CREATE TABLE upgrade (
   upgrade_type VARCHAR(32) NOT NULL,
   repo_version_id NUMERIC(19) NOT NULL,
   upgrade_package VARCHAR(255) NOT NULL,
+  upgrade_package_stack VARCHAR(255) NOT NULL,
   skip_failures BIT NOT NULL DEFAULT 0,
   skip_sc_failures BIT NOT NULL DEFAULT 0,
   downgrade_allowed BIT NOT NULL DEFAULT 1,
@@ -1150,6 +1173,7 @@ INSERT INTO ambari_sequences(sequence_name, sequence_value) values ('upgrade_id_
 INSERT INTO ambari_sequences(sequence_name, sequence_value) values ('upgrade_group_id_seq', 0);
 INSERT INTO ambari_sequences(sequence_name, sequence_value) values ('upgrade_item_id_seq', 0);
 INSERT INTO ambari_sequences(sequence_name, sequence_value) values ('stack_id_seq', 0);
+INSERT INTO ambari_sequences(sequence_name, sequence_value) values ('mpack_id_seq', 0);
 INSERT INTO ambari_sequences(sequence_name, sequence_value) values ('extension_id_seq', 0);
 INSERT INTO ambari_sequences(sequence_name, sequence_value) values ('link_id_seq', 0);
 INSERT INTO ambari_sequences(sequence_name, sequence_value) values ('widget_id_seq', 0);
@@ -1208,12 +1232,12 @@ insert into adminprincipal (principal_id, principal_type_id)
 
 -- Insert the default administrator user.
 insert into users(user_id, principal_id, user_name, display_name, local_username, create_time)
-  SELECT 1, 1, 'admin', 'Administrator', 'admin', NOW();
+  SELECT 1, 1, 'admin', 'Administrator', 'admin', 0;
 
 -- Insert the LOCAL authentication data for the default administrator user.
 -- The authentication_key value is the salted digest of the password: admin
 insert into user_authentication(user_authentication_id, user_id, authentication_type, authentication_key, create_time, update_time)
-  SELECT 1, 1, 'LOCAL', '538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', NOW(), NOW();
+  SELECT 1, 1, 'LOCAL', '538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', 0, 0;
 
 
 insert into adminpermission(permission_id, permission_name, resource_type_id, permission_label, principal_id, sort_order)
@@ -1275,6 +1299,7 @@ insert into adminpermission(permission_id, permission_name, resource_type_id, pe
     SELECT 'CLUSTER.RUN_CUSTOM_COMMAND', 'Perform custom cluster-level actions' UNION ALL
     SELECT 'CLUSTER.MANAGE_AUTO_START', 'Manage service auto-start configuration' UNION ALL
     SELECT 'CLUSTER.MANAGE_ALERT_NOTIFICATIONS', 'Manage alert notifications configuration' UNION ALL
+    SELECT 'CLUSTER.MANAGE_WIDGETS', 'Manage widgets' UNION ALL
     SELECT 'AMBARI.ADD_DELETE_CLUSTERS', 'Create new clusters' UNION ALL
     SELECT 'AMBARI.RENAME_CLUSTER', 'Rename clusters' UNION ALL
     SELECT 'AMBARI.MANAGE_SETTINGS', 'Manage settings' UNION ALL
@@ -1285,6 +1310,7 @@ insert into adminpermission(permission_id, permission_name, resource_type_id, pe
     SELECT 'AMBARI.ASSIGN_ROLES', 'Assign roles' UNION ALL
     SELECT 'AMBARI.MANAGE_STACK_VERSIONS', 'Manage stack versions' UNION ALL
     SELECT 'AMBARI.EDIT_STACK_REPOS', 'Edit stack repository URLs' UNION ALL
+    SELECT 'AMBARI.VIEW_STATUS_INFO', 'View status information' UNION ALL
     SELECT 'AMBARI.RUN_CUSTOM_COMMAND', 'Perform custom administrative actions';
 
   -- Set authorizations for View User role
@@ -1389,6 +1415,7 @@ insert into adminpermission(permission_id, permission_name, resource_type_id, pe
     SELECT permission_id, 'CLUSTER.VIEW_ALERTS' FROM adminpermission WHERE permission_name='CLUSTER.OPERATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.MANAGE_CREDENTIALS' FROM adminpermission WHERE permission_name='CLUSTER.OPERATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.MANAGE_AUTO_START' FROM adminpermission WHERE permission_name='CLUSTER.OPERATOR' UNION ALL
+    SELECT permission_id, 'CLUSTER.MANAGE_WIDGETS' FROM adminpermission WHERE permission_name='CLUSTER.OPERATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.MANAGE_USER_PERSISTED_DATA' FROM adminpermission WHERE permission_name='CLUSTER.OPERATOR';
 
   -- Set authorizations for Cluster Administrator role
@@ -1434,6 +1461,7 @@ insert into adminpermission(permission_id, permission_name, resource_type_id, pe
     SELECT permission_id, 'CLUSTER.MANAGE_USER_PERSISTED_DATA' FROM adminpermission WHERE permission_name='CLUSTER.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.MANAGE_AUTO_START' FROM adminpermission WHERE permission_name='CLUSTER.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.MANAGE_ALERT_NOTIFICATIONS' FROM adminpermission WHERE permission_name='CLUSTER.ADMINISTRATOR' UNION ALL
+    SELECT permission_id, 'CLUSTER.MANAGE_WIDGETS' FROM adminpermission WHERE permission_name='CLUSTER.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.RUN_CUSTOM_COMMAND' FROM adminpermission WHERE permission_name='CLUSTER.ADMINISTRATOR';
 
   -- Set authorizations for Administrator role
@@ -1480,6 +1508,7 @@ insert into adminpermission(permission_id, permission_name, resource_type_id, pe
     SELECT permission_id, 'CLUSTER.MANAGE_USER_PERSISTED_DATA' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.MANAGE_AUTO_START' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.MANAGE_ALERT_NOTIFICATIONS' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
+    SELECT permission_id, 'CLUSTER.MANAGE_WIDGETS' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'CLUSTER.RUN_SERVICE_CHECK' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'AMBARI.ADD_DELETE_CLUSTERS' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'AMBARI.RENAME_CLUSTER' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
@@ -1491,6 +1520,7 @@ insert into adminpermission(permission_id, permission_name, resource_type_id, pe
     SELECT permission_id, 'AMBARI.ASSIGN_ROLES' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'AMBARI.MANAGE_STACK_VERSIONS' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'AMBARI.EDIT_STACK_REPOS' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
+    SELECT permission_id, 'AMBARI.VIEW_STATUS_INFO' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR' UNION ALL
     SELECT permission_id, 'AMBARI.RUN_SERVICE_CHECK' FROM adminpermission WHERE permission_name='AMBARI.ADMINISTRATOR';
 
 insert into adminprivilege (privilege_id, permission_id, resource_id, principal_id)

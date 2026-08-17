@@ -102,9 +102,8 @@ public class AMSReportPropertyProvider extends MetricsReportPropertyProvider {
 
     Set<Resource> keepers = new HashSet<>();
     for (Resource resource : resources) {
-      if (populateResource(resource, request, predicate)) {
-        keepers.add(resource);
-      }
+      populateResource(resource, request, predicate);
+      keepers.add(resource);
     }
     return keepers;
   }
@@ -199,6 +198,11 @@ public class AMSReportPropertyProvider extends MetricsReportPropertyProvider {
         MetricsPropertyProvider.getSetString(propertyIdMap.keySet(), -1));
 
       uriBuilder.setParameter("appId", "HOST");
+
+      if (clusterName != null && hostProvider.isCollectorHostExternal(clusterName)) {
+        uriBuilder.setParameter("instanceId", clusterName);
+      }
+
       long startTime = temporalInfo.getStartTime();
       if (startTime != -1) {
         uriBuilder.setParameter("startTime", String.valueOf(startTime));

@@ -37,10 +37,11 @@ import org.apache.ambari.server.controller.spi.Resource;
 import org.apache.ambari.server.controller.spi.SystemException;
 import org.apache.ambari.server.controller.spi.TemporalInfo;
 import org.apache.ambari.server.controller.utilities.StreamProvider;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Property provider implementation for a Ganglia source. This provider is specialized
@@ -73,9 +74,8 @@ public class GangliaReportPropertyProvider extends MetricsReportPropertyProvider
 
     Set<Resource> keepers = new HashSet<>();
     for (Resource resource : resources) {
-      if (populateResource(resource, request, predicate)) {
-        keepers.add(resource);
-      }
+      populateResource(resource, request, predicate);
+      keepers.add(resource);
     }
     return keepers;
   }
@@ -90,17 +90,15 @@ public class GangliaReportPropertyProvider extends MetricsReportPropertyProvider
    * @param request   the request
    * @param predicate the predicate
    *
-   * @return true if the resource was successfully populated with the requested properties
-   *
    * @throws SystemException if unable to populate the resource
    */
-  private boolean populateResource(Resource resource, Request request, Predicate predicate)
+  private void populateResource(Resource resource, Request request, Predicate predicate)
       throws SystemException {
 
     Set<String> propertyIds = getPropertyIds();
 
     if (propertyIds.isEmpty()) {
-      return true;
+      return;
     }
     String clusterName = (String) resource.getPropertyValue(clusterNamePropertyId);
 
@@ -109,12 +107,12 @@ public class GangliaReportPropertyProvider extends MetricsReportPropertyProvider
         LOG.warn("Attempting to get metrics but the Ganglia server is unknown. Resource=" + resource +
             " : Cluster=" + clusterName);
       }
-      return true;
+      return;
     }
 
     setProperties(resource, clusterName, request, getRequestPropertyIds(request, predicate));
 
-    return true;
+    return;
   }
 
   private boolean setProperties(Resource resource, String clusterName, Request request, Set<String> ids)

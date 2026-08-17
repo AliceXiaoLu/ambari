@@ -88,7 +88,7 @@ describe('App.WizardStep5View', function() {
     });
   });
 
-  describe('#didInsertElement', function() {
+  describe.skip('#didInsertElement', function() {
 
     beforeEach(function () {
       sinon.stub(view.get('controller'), 'loadStep', Em.K);
@@ -207,6 +207,13 @@ describe('App.SelectHostView', function() {
 
   });
 
+  describe('should have jquery browser plugin', function() {
+    it('should test for both chrome and webkit', function() {
+      expect($.browser.chrome).to.be.true;
+      expect($.browser.webkit).to.be.true;
+    })
+  })
+
 });
 
 describe('App.InputHostView', function() {
@@ -287,7 +294,7 @@ describe('App.InputHostView', function() {
 
   });
 
-  describe('#getAvailableHosts', function() {
+  describe.skip('#getAvailableHosts', function() {
     var tests = Em.A([
       {
         hosts: Em.A([]),

@@ -27,7 +27,7 @@ import static org.junit.Assert.assertEquals;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import javax.ws.rs.core.UriInfo;
+import jakarta.ws.rs.core.UriInfo;
 
 import org.apache.ambari.server.api.services.DeleteResultMetadata;
 import org.apache.ambari.server.api.services.Result;
@@ -235,8 +235,7 @@ public class JsonSerializerTest {
         "      \"error\" : {\n" +
         "        \"key\" : \"key2\",\n" +
         "        \"code\" : 403,\n" +
-        "        \"message\" : \"org.apache.ambari.server.security.authorization.AuthorizationException:"+
-                              " The authenticated user is not authorized to perform the requested operation\"\n" +
+        "        \"message\" : \"The authenticated user is not authorized to perform the requested operation\"\n" +
         "      }\n" +
         "    }\n" +
         "  ]\n" +

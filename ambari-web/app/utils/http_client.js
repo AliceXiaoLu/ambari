@@ -32,7 +32,7 @@ App.HttpClient = Em.Object.create({
    */
   defaultErrorHandler: function (jqXHR, textStatus, errorThrown, url) {
     try {
-      var json = $.parseJSON(jqXHR.responseText);
+      var json = JSON.parse(jqXHR.responseText);
     } catch (err) { }
     App.ajax.defaultErrorHandler(jqXHR, url);
     if (json) {
@@ -68,7 +68,7 @@ App.HttpClient = Em.Object.create({
     xhr.open(method, url + (url.indexOf('?') >= 0 ? '&_=' : '?_=') + curTime, true);
     if (isGetAsPost) {
       xhr.setRequestHeader("X-Http-Method-Override", "GET");
-      xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+      xhr.setRequestHeader("Content-type", "text/plain");
     }
     xhr.send(params);
 
@@ -85,7 +85,7 @@ App.HttpClient = Em.Object.create({
     var timeout = setTimeout(function () {
       if (xhr.readyState == 4) {
         if (xhr.status == 200) {
-          var response = $.parseJSON(xhr.responseText);
+          var response = JSON.parse(xhr.responseText);
           if (tmp_val.beforeMap) {
             tmp_val.beforeMap.call(self, response);
           }

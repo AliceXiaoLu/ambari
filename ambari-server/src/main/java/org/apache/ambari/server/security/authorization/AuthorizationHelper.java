@@ -29,6 +29,8 @@ import org.apache.ambari.server.orm.entities.PermissionEntity;
 import org.apache.ambari.server.orm.entities.PrivilegeEntity;
 import org.apache.ambari.server.orm.entities.ResourceEntity;
 import org.apache.ambari.server.orm.entities.RoleAuthorizationEntity;
+import org.apache.ambari.server.security.authentication.AmbariProxiedUserDetailsImpl;
+import org.apache.ambari.server.security.authentication.AmbariUserDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -56,6 +58,35 @@ public class AuthorizationHelper {
 
   @Inject
   static Provider<ViewInstanceDAO> viewInstanceDAOProvider;
+
+  /**
+   * Gets the name of the logged-in proxy user, if any.
+   *
+   * @param authentication
+   * @return the name of the logged-in proxy user
+   */
+  public static String getProxyUserName(Authentication authentication) {
+    if (authentication==null){
+      return null;
+    }
+    Object userDetails = authentication.getPrincipal();
+    if (userDetails instanceof AmbariProxiedUserDetailsImpl) {
+      AmbariProxiedUserDetailsImpl ambariProxiedUserDetails = (AmbariProxiedUserDetailsImpl) userDetails;
+      return ambariProxiedUserDetails.getProxyUserDetails().getUsername();
+    }
+    return null;
+  }
+
+  /**
+   * Gets the name of the logged-in proxy user, if any.
+   *
+   * @return the name of the logged-in proxy user
+   */
+  public static String getProxyUserName() {
+    SecurityContext securityContext = SecurityContextHolder.getContext();
+    Authentication auth = securityContext.getAuthentication();
+    return getProxyUserName(auth);
+  }
 
   /**
    * Converts collection of RoleEntities to collection of GrantedAuthorities
@@ -104,14 +135,13 @@ public class AuthorizationHelper {
     SecurityContext securityContext = SecurityContextHolder.getContext();
 
     Authentication authentication = securityContext.getAuthentication();
-    UserIdAuthentication auth;
-    if (authentication instanceof UserIdAuthentication) {
-      auth = (UserIdAuthentication) authentication;
-    } else {
-      return -1;
+    Object principal = (authentication == null) ? null : authentication.getPrincipal();
+
+    if (principal instanceof AmbariUserDetails) {
+      return ((AmbariUserDetails) principal).getUserId();
     }
 
-    return auth.getUserId();
+    return -1;
   }
 
   /**
@@ -190,40 +220,44 @@ public class AuthorizationHelper {
       // If the user has at least one authorization that exists in the set of required authorizations,
       // that user is authorized to perform the operation.
       for (GrantedAuthority grantedAuthority : authentication.getAuthorities()) {
-        AmbariGrantedAuthority ambariGrantedAuthority = (AmbariGrantedAuthority) grantedAuthority;
-        PrivilegeEntity privilegeEntity = ambariGrantedAuthority.getPrivilegeEntity();
-        ResourceEntity privilegeResource = privilegeEntity.getResource();
-        ResourceType privilegeResourceType = ResourceType.translate(privilegeResource.getResourceType().getName());
-        boolean resourceOK;
+        if (grantedAuthority instanceof AmbariGrantedAuthority) {
+          AmbariGrantedAuthority ambariGrantedAuthority = (AmbariGrantedAuthority) grantedAuthority;
+          PrivilegeEntity privilegeEntity = ambariGrantedAuthority.getPrivilegeEntity();
+          ResourceEntity privilegeResource = privilegeEntity.getResource();
+          ResourceType privilegeResourceType = ResourceType.translate(privilegeResource.getResourceType().getName());
+          boolean resourceOK;
 
-        if (ResourceType.AMBARI == privilegeResourceType) {
-          // This resource type indicates administrative access
-          resourceOK = true;
-        } else if ((resourceType == null) || (resourceType == privilegeResourceType)) {
-          resourceOK = (resourceId == null) || resourceId.equals(privilegeResource.getId());
-        } else {
-          resourceOK = false;
-        }
+          if (ResourceType.AMBARI == privilegeResourceType) {
+            // This resource type indicates administrative access
+            resourceOK = true;
+          } else if ((resourceType == null) || (resourceType == privilegeResourceType)) {
+            resourceOK = (resourceId == null) || resourceId.equals(privilegeResource.getId());
+          } else {
+            resourceOK = false;
+          }
 
-        // The the authority is for the relevant resource, see if one of the authorizations matches
-        // one of the required authorizations...
-        if (resourceOK) {
-          PermissionEntity permission = privilegeEntity.getPermission();
-          Collection<RoleAuthorizationEntity> userAuthorizations = (permission == null)
-              ? null
-              : permission.getAuthorizations();
+          // The the authority is for the relevant resource, see if one of the authorizations matches
+          // one of the required authorizations...
+          if (resourceOK) {
+            PermissionEntity permission = privilegeEntity.getPermission();
+            Collection<RoleAuthorizationEntity> userAuthorizations = (permission == null)
+                ? null
+                : permission.getAuthorizations();
 
-          if (userAuthorizations != null) {
-            for (RoleAuthorizationEntity userAuthorization : userAuthorizations) {
-              try {
-                if (requiredAuthorizations.contains(RoleAuthorization.translate(userAuthorization.getAuthorizationId()))) {
-                  return true;
+            if (userAuthorizations != null) {
+              for (RoleAuthorizationEntity userAuthorization : userAuthorizations) {
+                try {
+                  if (requiredAuthorizations.contains(RoleAuthorization.translate(userAuthorization.getAuthorizationId()))) {
+                    return true;
+                  }
+                } catch (IllegalArgumentException e) {
+                  LOG.warn("Invalid authorization name, '{}'... ignoring.", userAuthorization.getAuthorizationId());
                 }
-              } catch (IllegalArgumentException e) {
-                LOG.warn("Invalid authorization name, '{}'... ignoring.", userAuthorization.getAuthorizationId());
               }
             }
           }
+        }else {
+            LOG.warn("GrantedAuthority is not an instance of AmbariGrantedAuthority. Ignoring.");
         }
       }
 
@@ -295,13 +329,15 @@ public class AuthorizationHelper {
    * of alias user name to local ambari user name to make possible resolving
    * login alias to ambari user name.
    * @param ambariUserName ambari user name for which the alias is to be stored in the session
-   * @param loginAlias the alias for the ambari user name.
+   * @param loginAlias The Name with which user logged in Ambari UI.
    */
   public static void addLoginNameAlias(String ambariUserName, String loginAlias) {
     ServletRequestAttributes attr = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
     if (attr != null) {
       LOG.info("Adding login alias '{}' for user name '{}'", loginAlias, ambariUserName);
       attr.setAttribute(loginAlias, ambariUserName, RequestAttributes.SCOPE_SESSION);
+      //save Vice Versa Too
+      attr.setAttribute(ambariUserName, loginAlias, RequestAttributes.SCOPE_SESSION);
     }
   }
 

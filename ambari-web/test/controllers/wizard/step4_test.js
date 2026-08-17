@@ -190,13 +190,16 @@ describe('App.WizardStep4Controller', function () {
         beforeEach(function () {
           controller.clear();
           Object.keys(testCase.condition).forEach(function (id) {
-            controller.pushObject(App.StackService.createRecord({
+            controller.pushObject(Em.Object.create({
               serviceName: id,
               isSelected: testCase.condition[id],
               canBeSelected: true,
               isInstalled: false,
               coSelectedServices: function() {
-                return App.StackService.coSelected[this.get('serviceName')] || [];
+                var coSelected = {
+                  'YARN': ['MAPREDUCE2']
+                };
+                return coSelected[this.get('serviceName')] || [];
               }.property('serviceName')
             }));
           });
@@ -338,7 +341,7 @@ describe('App.WizardStep4Controller', function () {
         },
         {
           services: ['RANGER'],
-          errorsExpected: ['ambariMetricsCheck', 'smartSenseCheck', 'atlasCheck', 'rangerRequirements']
+          errorsExpected: ['ambariMetricsCheck', 'smartSenseCheck', 'atlasCheck', 'ambariRangerInfraCheck']
         },
         {
           services: ['SMARTSENSE'],
@@ -346,7 +349,7 @@ describe('App.WizardStep4Controller', function () {
         },
         {
           services: ['ATLAS', 'AMBARI_METRICS', 'SMARTSENSE'],
-          errorsExpected: ['rangerCheck', 'ambariInfraCheck', ]
+          errorsExpected: ['rangerCheck', 'ambariAtlasInfraCheck', 'ambariAtlasHbaseCheck']
         },
         {
           services: ['LOGSEARCH', 'AMBARI_METRICS', 'SMARTSENSE'],
@@ -354,7 +357,7 @@ describe('App.WizardStep4Controller', function () {
         },
         {
           services: ['ATLAS', 'AMBARI_METRICS', 'SMARTSENSE', 'RANGER'],
-          errorsExpected: ['ambariInfraCheck', 'rangerRequirements']
+          errorsExpected: ['ambariRangerInfraCheck', 'ambariAtlasInfraCheck', 'ambariAtlasHbaseCheck']
         },
       ],
       controllerNames = ['installerController', 'addServiceController'],
@@ -736,61 +739,6 @@ describe('App.WizardStep4Controller', function () {
 
   });
 
-  describe('#rangerValidation', function () {
-
-    var cases = [
-      {
-        services: ['HDFS'],
-        isRangerWarning: false,
-        title: 'Ranger not available'
-      },
-      {
-        services: ['RANGER'],
-        isRangerSelected: false,
-        isRangerInstalled: false,
-        isRangerWarning: false,
-        title: 'Ranger not selected'
-      },
-      {
-        services: ['RANGER'],
-        isRangerSelected: true,
-        isRangerInstalled: false,
-        isRangerWarning: true,
-        title: 'Ranger selected'
-      },
-      {
-        services: ['RANGER'],
-        isRangerSelected: true,
-        isRangerInstalled: true,
-        isRangerWarning: false,
-        title: 'Ranger installed'
-      }
-    ];
-
-    beforeEach(function() {
-      controller.clear();
-      controller.set('errorStack', []);
-    });
-
-    cases.forEach(function (item) {
-      it(item.title, function () {
-        controller.set('content', generateSelectedServicesContent(item.services));
-        var ranger = controller.findProperty('serviceName', 'RANGER');
-        if (item.services.contains('RANGER')) {
-          ranger.setProperties({
-            isSelected: item.isRangerSelected,
-            isInstalled: item.isRangerInstalled
-          });
-        } else {
-          controller.removeObject(ranger);
-        }
-        controller.rangerValidation();
-        expect(controller.get('errorStack').mapProperty('id').contains('rangerRequirements')).to.equal(item.isRangerWarning);
-      });
-    });
-
-  });
-
   describe('#sparkValidation', function () {
 
     var cases = [
@@ -988,7 +936,6 @@ describe('App.WizardStep4Controller', function () {
 
     Em.A([
       'serviceCheckPopup',
-      'rangerRequirementsPopup',
       'sparkWarningPopup'
     ]).forEach(function (methodName) {
 

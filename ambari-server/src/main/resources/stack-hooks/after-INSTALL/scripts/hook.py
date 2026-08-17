@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -22,8 +23,8 @@ from shared_initialization import link_configs
 from shared_initialization import setup_config
 from shared_initialization import setup_stack_symlinks
 
-class AfterInstallHook(Hook):
 
+class AfterInstallHook(Hook):
   def hook(self, env):
     import params
 
@@ -32,6 +33,7 @@ class AfterInstallHook(Hook):
     setup_config()
 
     link_configs(self.stroutfile)
+
 
 if __name__ == "__main__":
   AfterInstallHook().execute()

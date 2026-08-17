@@ -24,6 +24,7 @@ if (Ember.$.uuid === undefined) {
 require('utils/bootstrap_reopen');
 require('utils/ember_reopen');
 require('utils/ember_computed');
+require('utils/bootstrap_popups');
 var stringUtils = require('utils/string_utils');
 var stompClientClass = require('utils/stomp_client');
 
@@ -241,7 +242,9 @@ module.exports = Em.Application.create({
    * @type {bool}
    */
   isHaEnabled: function () {
-    return App.Service.find('HDFS').get('isLoaded') && !App.HostComponent.find().someProperty('componentName', 'SECONDARY_NAMENODE');
+    return App.Service.find('HDFS').get('isLoaded')
+      && App.MasterComponent.find('SECONDARY_NAMENODE').get('totalCount') === 0
+      && App.MasterComponent.find('NAMENODE').get('totalCount') > 1;
   }.property('router.clusterController.dataLoadList.services', 'router.clusterController.isServiceContentFullyLoaded'),
 
   hasNameNodeFederation: function () {

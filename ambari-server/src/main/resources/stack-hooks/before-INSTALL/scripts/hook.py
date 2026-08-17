@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -17,21 +18,21 @@ limitations under the License.
 
 """
 
-import sys
-from resource_management import *
-from shared_initialization import *
-from repo_initialization import *
+from resource_management import Hook
+from shared_initialization import install_packages
+from repo_initialization import install_repos
+
 
 class BeforeInstallHook(Hook):
-
   def hook(self, env):
     import params
 
-    self.run_custom_hook('before-ANY')
+    self.run_custom_hook("before-ANY")
     env.set_params(params)
-    
+
     install_repos()
     install_packages()
+
 
 if __name__ == "__main__":
   BeforeInstallHook().execute()

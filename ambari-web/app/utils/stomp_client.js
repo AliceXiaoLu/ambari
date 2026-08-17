@@ -39,22 +39,12 @@ module.exports = Em.Object.extend({
   /**
    * @type {string}
    */
-  webSocketUrl: '{protocol}://{hostname}:{port}/api/stomp/v1/websocket',
+  webSocketUrl: '{protocol}://{hostname}{port}/api/stomp/v1/websocket',
 
   /**
    * @type {string}
    */
-  sockJsUrl: '{protocol}://{hostname}:{port}/api/stomp/v1',
-
-  /**
-   * @const
-   */
-  PORT: '8080',
-
-  /**
-   * @const
-   */
-  SECURE_PORT: '8443',
+  sockJsUrl: '{protocol}://{hostname}{port}/api/stomp/v1',
 
   /**
    * sockJs should use only alternative options as transport in case when websocket supported but connection fails
@@ -67,6 +57,11 @@ module.exports = Em.Object.extend({
    * @type {boolean}
    */
   isConnected: false,
+
+  /**
+   * @type {number | null}
+   */
+  timerId: null,
 
   /**
    * @type {boolean}
@@ -134,11 +129,23 @@ module.exports = Em.Object.extend({
    * @returns {string}
    */
   getSocketUrl: function(template, isWebsocket) {
-    const hostname = window.location.hostname;
-    const isSecure = window.location.protocol === 'https:';
+    const hostname = this.getHostName();
+    const isSecure = this.isSecure();
     const protocol = isWebsocket ? (isSecure ? 'wss' : 'ws') : (isSecure ? 'https' : 'http');
-    const port = isSecure ? this.get('SECURE_PORT') : this.get('PORT');
+    const port = this.getPort();
     return template.replace('{hostname}', hostname).replace('{protocol}', protocol).replace('{port}', port);
+  },
+
+  getHostName: function () {
+    return window.location.hostname;
+  },
+
+  isSecure: function () {
+    return window.location.protocol === 'https:';
+  },
+
+  getPort: function () {
+    return window.location.port ? (':' + window.location.port) : '';
   },
 
   onConnectionSuccess: function() {
@@ -155,14 +162,18 @@ module.exports = Em.Object.extend({
   },
 
   reconnect: function(useSockJS) {
-    const subscriptions = this.get('subscriptions');
-    setTimeout(() => {
+    if (this.timerId !== null) {
+      clearTimeout(this.timerId);
+    }
+    const subscriptions = Object.assign({}, this.get('subscriptions'));
+    this.timerId = setTimeout(() => {
       console.debug('Reconnecting to WebSocket...');
+      this.disconnect();
       this.connect(useSockJS).done(() => {
-        for (var i in subscriptions) {
-          subscriptions[i].unsubscribe();
+        this.set('subscriptions', {});
+        for (let i in subscriptions) {
           this.subscribe(subscriptions[i].destination, subscriptions[i].handlers['default']);
-          for (var key in subscriptions[i].handlers) {
+          for (let key in subscriptions[i].handlers) {
             key !== 'default' && this.addHandler(subscriptions[i].destination, key, subscriptions[i].handlers[key]);
           }
         }
@@ -171,7 +182,10 @@ module.exports = Em.Object.extend({
   },
 
   disconnect: function () {
-    this.get('client').disconnect();
+    var client = this.get('client');
+    if (client && client.ws && (client.ws.readyState === client.ws.OPEN)) {
+      client.disconnect();
+    }
   },
 
   /**

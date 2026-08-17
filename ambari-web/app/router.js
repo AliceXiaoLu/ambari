@@ -284,23 +284,23 @@ App.Router = Em.Router.extend({
     var dfd = $.Deferred();
     var self = this;
     var auth = App.db.getAuthenticated();
-    this.getClusterDataRequest().complete(function (xhr) {
-      if (xhr.state() === 'resolved') {
+    this.getClusterDataRequest().always(function (xhr, textStatus, jqXHRorErrorThrown) {
+      if (xhr && textStatus == 'success') {
         // if server knows the user and user authenticated by UI
         if (auth) {
           dfd.resolve(self.get('loggedIn'));
           // if server knows the user but UI don't, check the response header
           // and try to authorize
-        } else if (xhr.getResponseHeader('User')) {
-          var user = xhr.getResponseHeader('User');
+        } else if (jqXHRorErrorThrown.getResponseHeader('User')) {
+          var user = jqXHRorErrorThrown.getResponseHeader('User');
           App.ajax.send({
-            name: 'router.login',
+            name: 'router.afterLogin',
             sender: self,
             data: {
               usr: user,
               loginName: encodeURIComponent(user)
             },
-            success: 'loginSuccessCallback',
+            success: 'afterLoginSuccessCallback',
             error: 'loginErrorCallback'
           }).then(function() {
             dfd.resolve(true);
@@ -342,7 +342,7 @@ App.Router = Em.Router.extend({
    * @param {?object} data
    */
   onAuthenticationError: function (data) {
-    if (data.status === 403) {
+    if ((data.status === 403) || (data.status === 401)) {
       try {
         var responseJson = JSON.parse(data.responseText);
         if (responseJson.jwtProviderUrl && this.get('location.lastSetURL') !== this.get('localUserAuthUrl')) {
@@ -421,6 +421,7 @@ App.Router = Em.Router.extend({
     App.ajax.send({
       name: 'router.login',
       sender: this,
+      dataType:'text',
       data: {
         auth: "Basic " + hash,
         usr: usr,
@@ -438,6 +439,19 @@ App.Router = Em.Router.extend({
   },
 
   loginSuccessCallback: function(data, opt, params) {
+    App.ajax.send({
+      name: 'router.afterLogin',
+      sender: this,
+      data: {
+        usr: params.usr,
+        loginName: params.loginName
+      },
+      success: 'afterLoginSuccessCallback',
+      error: 'loginErrorCallback'
+    });
+  },
+
+  afterLoginSuccessCallback: function(data, opt, params) {
     var self = this;
     App.usersMapper.map({"items": [data]});
     this.setUserLoggedIn(data.Users.user_name);
@@ -652,7 +666,7 @@ App.Router = Em.Router.extend({
         }),
         sortedMappedVersions = mappedVersions.sort(),
         latestVersion = sortedMappedVersions[sortedMappedVersions.length-1].replace(/[^\d.-]/g, '');
-      window.location.replace(App.appURLRoot +  'views/ADMIN_VIEW/' + latestVersion + '/INSTANCE/#/');
+      App.replaceWindowLocation(App.appURLRoot +  'views/ADMIN_VIEW/' + latestVersion + '/INSTANCE/#/')
     }
   },
 

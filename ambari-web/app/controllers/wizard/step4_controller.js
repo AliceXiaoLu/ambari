@@ -59,11 +59,27 @@ App.WizardStep4Controller = Em.ArrayController.extend({
    */
   errorStack: [],
 
+  isAddServiceWizard: Em.computed.equal('content.controllerName', 'addServiceController'),
+
+  isOzoneInstalled: function() {
+    let isOzone = this.findProperty('serviceName', 'OZONE');
+    return isOzone && isOzone.get('isInstalled');
+  }.property('@each.isInstalled'),
+
   /**
    * Services which are HDFS compatible
    */
   fileSystems: function() {
-    var fileSystems = this.filterProperty('isDFS', true);;
+    let fileSystems = [];
+    const self = this;
+    this.filterProperty('isDFS', true).forEach((fs) => {
+      if (self.get('isAddServiceWizard') && self.get('isOzoneInstalled') &&
+        fs.get('serviceName') === 'HDFS') {
+        return;
+      }
+      fileSystems.push(fs);
+    });
+
     return fileSystems.map(function(fs) {
       return App.FileSystem.create({content: fs, services: fileSystems});
     });
@@ -85,33 +101,6 @@ App.WizardStep4Controller = Em.ArrayController.extend({
    */
   multipleDFSs: function () {
     return this.filterProperty('isDFS',true).filterProperty('isSelected',true).length > 1;
-  },
-
-  /**
-   * Check whether Ranger is selected and show installation requirements if yes
-   * @param {function} callback
-   * @method rangerValidation
-   */
-  rangerValidation: function (callback) {
-    var rangerService = this.findProperty('serviceName', 'RANGER');
-    if (rangerService && !rangerService.get('isInstalled')) {
-      if(rangerService.get('isSelected')) {
-        this.addValidationError({
-          id: 'rangerRequirements',
-          type: 'WARNING',
-          callback: this.rangerRequirementsPopup,
-          callbackParams: [callback]
-        });
-      }
-      else {
-        //Ranger is selected, remove the Ranger error from errorObject array
-        var rangerError = this.get('errorStack').filterProperty('id',"rangerRequirements");
-        if(rangerError)
-        {
-           this.get('errorStack').removeObject(rangerError[0]);
-        }
-      }
-    }
   },
 
   /**
@@ -195,9 +184,10 @@ App.WizardStep4Controller = Em.ArrayController.extend({
       this.serviceValidation(callback, 'RANGER', 'rangerCheck');
       this.serviceValidation(callback, 'ATLAS', 'atlasCheck');
     }
-    this.dependentServiceValidation('ATLAS', 'AMBARI_INFRA_SOLR', 'ambariInfraCheck', callback);
+    this.dependentServiceValidation('RANGER', 'AMBARI_INFRA_SOLR', 'ambariRangerInfraCheck', callback);
+    this.dependentServiceValidation('ATLAS', 'AMBARI_INFRA_SOLR', 'ambariAtlasInfraCheck', callback);
+    this.dependentServiceValidation('ATLAS', 'HBASE', 'ambariAtlasHbaseCheck', callback);
     this.dependentServiceValidation('LOGSEARCH', 'AMBARI_INFRA_SOLR', 'ambariLogsearchCheck', callback);
-    this.rangerValidation(callback);
     this.sparkValidation(callback);
     if (!!this.get('errorStack').filterProperty('isShown', false).length) {
       var firstError = this.get('errorStack').findProperty('isShown', false);
@@ -344,7 +334,7 @@ App.WizardStep4Controller = Em.ArrayController.extend({
    */
   isDFSStack: function () {
 	  var bDFSStack = false;
-    var dfsServices = ['HDFS', 'GLUSTERFS'];
+    var dfsServices = ['HDFS', 'GLUSTERFS', 'OZONE'];
     var availableServices = this.filterProperty('isInstalled',false);
     availableServices.forEach(function(service){
       if (dfsServices.contains(service.get('serviceName')) || service.get('serviceType') == 'HCFS' ) {
@@ -361,12 +351,26 @@ App.WizardStep4Controller = Em.ArrayController.extend({
    */
   fileSystemServiceValidation: function(callback) {
     if(this.isDFSStack()){
+      const self = this;
       var primaryDFS = this.findProperty('isPrimaryDFS',true);
       if (primaryDFS) {
         var primaryDfsDisplayName = primaryDFS.get('displayNameOnSelectServicePage');
         var primaryDfsServiceName = primaryDFS.get('serviceName');
+        //if multiple DFS are not selected, remove the related error from the error array
+        let removeFsError = function () {
+          let fsError = self.get('errorStack').findProperty('id',"multipleDFS");
+          if(fsError)
+          {
+            self.get('errorStack').removeObject(fsError);
+          }
+        };
         if (this.multipleDFSs()) {
           var dfsServices = this.filterProperty('isDFS',true).filterProperty('isSelected',true).mapProperty('serviceName');
+          //special case for HDFS and OZONE
+          if (dfsServices.length === 2 && dfsServices.includes('HDFS') && dfsServices.includes('OZONE')) {
+            removeFsError();
+            return;
+          }
           var services = dfsServices.map(function (item){
             return {
               serviceName: item,
@@ -381,12 +385,7 @@ App.WizardStep4Controller = Em.ArrayController.extend({
         }
         else
         {
-          //if multiple DFS are not selected, remove the related error from the error array
-          var fsError = this.get('errorStack').filterProperty('id',"multipleDFS");
-          if(fsError)
-          {
-             this.get('errorStack').removeObject(fsError[0]);
-          }
+          removeFsError();
         }
       }
     }
@@ -552,45 +551,6 @@ App.WizardStep4Controller = Em.ArrayController.extend({
       }),
       primary: Em.I18n.t('common.proceedAnyway'),
       primaryClass: 'btn-warning',
-      onPrimary: function () {
-        self.onPrimaryPopupCallback(callback);
-        this.hide();
-      },
-      onSecondary: function () {
-        if (callback) {
-          callback(id);
-        }
-        this._super();
-      },
-      onClose: function () {
-        if (callback) {
-          callback(id);
-        }
-        this._super();
-      }
-    });
-  },
-
-  /**
-   * Show popup with installation requirements for Ranger service
-   * @param {function} callback
-   * @param {string} id
-   * @return {App.ModalPopup}
-   * @method rangerRequirementsPopup
-   */
-  rangerRequirementsPopup: function (callback, id) {
-    var self = this;
-    return App.ModalPopup.show({
-      'data-qa': 'ranger-requirements-modal',
-      header: Em.I18n.t('installer.step4.rangerRequirements.popup.header'),
-      bodyClass: Em.View.extend({
-        templateName: require('templates/wizard/step4/step4_ranger_requirements_popup')
-      }),
-      primary: Em.I18n.t('common.proceed'),
-      isChecked: false,
-      disablePrimary: function () {
-        return !this.get('isChecked');
-      }.property('isChecked'),
       onPrimary: function () {
         self.onPrimaryPopupCallback(callback);
         this.hide();

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
     Jinja Documentation Extensions
@@ -90,14 +91,15 @@ def format_function(name, aliases, func):
             signature = match.group(1)
     else:
         try:
-            argspec = inspect.getargspec(func)
+            sig = inspect.signature(func)
+            params = list(sig.parameters.values())
             if getattr(func, 'environmentfilter', False) or \
                getattr(func, 'contextfilter', False):
-                del argspec[0][0]
-            signature = inspect.formatargspec(*argspec)
+                params = params[1:]
+            signature = f"({', '.join(str(param) for param in params)})"
         except:
             pass
-    result = ['.. function:: %s%s' % (name, signature), '']
+    result = [f'.. function:: {name}{signature}', '']
     result.extend('    ' + line for line in lines)
     if aliases:
         result.extend(('', '    :aliases: %s' % ', '.join(
@@ -109,10 +111,10 @@ def dump_functions(mapping):
     def directive(dirname, arguments, options, content, lineno,
                       content_offset, block_text, state, state_machine):
         reverse_mapping = {}
-        for name, func in mapping.iteritems():
+        for name, func in mapping.items():
             reverse_mapping.setdefault(func, []).append(name)
         filters = []
-        for func, names in reverse_mapping.iteritems():
+        for func, names in reverse_mapping.items():
             aliases = sorted(names, key=lambda x: len(x))
             name = aliases.pop()
             filters.append((name, aliases, func))
@@ -141,20 +143,19 @@ def jinja_nodes(dirname, arguments, options, content, lineno,
     def walk(node, indent):
         p = ' ' * indent
         sig = ', '.join(node.fields)
-        doc.append(p + '.. autoclass:: %s(%s)' % (node.__name__, sig), '')
+        doc.append(p + f'.. autoclass:: {node.__name__}({sig})', '')
         if node.abstract:
             members = []
-            for key, name in node.__dict__.iteritems():
+            for key, name in node.__dict__.items():
                 if not key.startswith('_') and \
                    not hasattr(node.__base__, key) and callable(name):
                     members.append(key)
             if members:
                 members.sort()
-                doc.append('%s :members: %s' % (p, ', '.join(members)), '')
+                doc.append(f"{p} :members: {', '.join(members)}", '')
         if node.__base__ != object:
             doc.append('', '')
-            doc.append('%s :Node type: :class:`%s`' %
-                       (p, node.__base__.__name__), '')
+            doc.append(f'{p} :Node type: :class:`{node.__base__.__name__}`', '')
         doc.append('', '')
         children = node.__subclasses__()
         children.sort(key=lambda x: x.__name__.lower())
@@ -168,10 +169,10 @@ def inject_toc(app, doctree, docname):
     titleiter = iter(doctree.traverse(nodes.title))
     try:
         # skip first title, we are not interested in that one
-        titleiter.next()
-        title = titleiter.next()
+        next(titleiter)
+        title = next(titleiter)
         # and check if there is at least another title
-        titleiter.next()
+        next(titleiter)
     except StopIteration:
         return
     tocnode = nodes.section('')

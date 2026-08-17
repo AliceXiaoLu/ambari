@@ -20,6 +20,7 @@ package org.apache.ambari.server.controller.internal;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -37,7 +38,6 @@ import org.apache.ambari.server.StaticallyInject;
 import org.apache.ambari.server.api.resources.OperatingSystemResourceDefinition;
 import org.apache.ambari.server.api.resources.RepositoryResourceDefinition;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
-import org.apache.ambari.server.configuration.ComponentSSLConfiguration;
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.controller.spi.NoSuchParentResourceException;
 import org.apache.ambari.server.controller.spi.NoSuchResourceException;
@@ -58,25 +58,26 @@ import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.security.authorization.ResourceType;
 import org.apache.ambari.server.security.authorization.RoleAuthorization;
 import org.apache.ambari.server.stack.RepoUtil;
+import org.apache.ambari.server.stack.upgrade.RepositoryVersionHelper;
 import org.apache.ambari.server.state.RepositoryInfo;
-import org.apache.ambari.server.state.RepositoryType;
 import org.apache.ambari.server.state.StackId;
 import org.apache.ambari.server.state.StackInfo;
 import org.apache.ambari.server.state.repository.VersionDefinitionXml;
 import org.apache.ambari.server.state.stack.RepoTag;
-import org.apache.ambari.server.state.stack.upgrade.RepositoryVersionHelper;
+import org.apache.ambari.spi.RepositoryType;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.ObjectUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.math.NumberUtils;
-import org.codehaus.jackson.node.ArrayNode;
-import org.codehaus.jackson.node.JsonNodeFactory;
-import org.codehaus.jackson.node.ObjectNode;
+import org.apache.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Function;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.ListMultimap;
@@ -296,7 +297,7 @@ public class VersionDefinitionResourceProvider extends AbstractAuthorizedResourc
       if (dryRun) {
         validations.add(err);
       } else {
-        throw new IllegalArgumentException(err);
+        throw new ResourceAlreadyExistsException(err);
       }
     }
 
@@ -307,7 +308,7 @@ public class VersionDefinitionResourceProvider extends AbstractAuthorizedResourc
       if (dryRun) {
         validations.add(err);
       } else {
-        throw new IllegalArgumentException(err);
+        throw new ResourceAlreadyExistsException(err);
       }
     }
 
@@ -570,18 +571,25 @@ public class VersionDefinitionResourceProvider extends AbstractAuthorizedResourc
 
     try {
       URI uri = new URI(definitionUrl);
-      InputStream stream = null;
 
       if (uri.getScheme().equalsIgnoreCase("file")) {
-        stream = uri.toURL().openStream();
+        if (!s_configuration.areFileVDFAllowed()) {
+          throw new AmbariException("File URL for VDF are not enabled");
+        }
+        InputStream stream = uri.toURL().openStream();
+        holder.xmlString = IOUtils.toString(stream, "UTF-8");
       } else {
-        URLStreamProvider provider = new URLStreamProvider(connectTimeout, readTimeout,
-            ComponentSSLConfiguration.instance());
+        URLRedirectProvider provider = new URLRedirectProvider(connectTimeout, readTimeout, true);
+        URLRedirectProvider.RequestResult requestResult = provider.executeGet(definitionUrl);
 
-        stream = provider.readFrom(definitionUrl);
+        if (requestResult.getCode() != HttpStatus.SC_OK) {
+          String err = String.format("Could not load url from '%s' with code '%d'.  %s",
+                                     definitionUrl, requestResult.getCode(), requestResult.getContent());
+          throw new AmbariException(err);
+        }
+
+        holder.xmlString = requestResult.getContent();
       }
-
-      holder.xmlString = IOUtils.toString(stream, "UTF-8");
       holder.xml = VersionDefinitionXml.load(holder.xmlString);
     } catch (Exception e) {
       String err = String.format("Could not load url from %s.  %s",
@@ -611,17 +619,34 @@ public class VersionDefinitionResourceProvider extends AbstractAuthorizedResourc
 
     entity.setStack(stackEntity);
 
-    List<RepositoryInfo> repos = holder.xml.repositoryInfo.getRepositories();
+    String credentials = null;
+    if (holder.url != null) {
+      try {
+        URI uri = new URI(holder.url);
+        credentials = uri.getUserInfo();
+      } catch (URISyntaxException e) {
+        throw new AmbariException(String.format("Could not parse url %s", holder.url), e);
+      }
+    }
+
+    List<RepositoryInfo> repos = holder.xml.repositoryInfo.getRepositories(credentials);
+
+    StackInfo stack = s_metaInfo.get().getStack(stackId);
 
     // Add service repositories (these are not contained by the VDF but are there in the stack model)
-    ListMultimap<String, RepositoryInfo> stackReposByOs =
-        s_metaInfo.get().getStack(stackId.getStackName(), stackId.getStackVersion()).getRepositoriesByOs();
+    ListMultimap<String, RepositoryInfo> stackReposByOs = stack.getRepositoriesByOs();
     repos.addAll(RepoUtil.getServiceRepos(repos, stackReposByOs));
 
     entity.addRepoOsEntities(s_repoVersionHelper.get().createRepoOsEntities(repos));
 
-    entity.setVersion(holder.xml.release.getFullVersion());
-    entity.setDisplayName(stackId, holder.xml.release);
+    entity.setVersion(holder.xml.release.getFullVersion(stack.getReleaseVersion()));
+
+    if (StringUtils.isNotEmpty(holder.xml.release.display)) {
+      entity.setDisplayName(holder.xml.release.display);
+    } else {
+      entity.setDisplayName(stackId.getStackName() + "-" + entity.getVersion());
+    }
+
     entity.setType(holder.xml.release.repositoryType);
     entity.setVersionUrl(holder.url);
     entity.setVersionXml(holder.xmlString);
@@ -658,7 +683,7 @@ public class VersionDefinitionResourceProvider extends AbstractAuthorizedResourc
     }
 
     setResourceProperty(resource, VERSION_DEF_TYPE_PROPERTY_ID, xml.release.repositoryType, requestedIds);
-    setResourceProperty(resource, VERSION_DEF_FULL_VERSION, xml.release.getFullVersion(), requestedIds);
+    setResourceProperty(resource, VERSION_DEF_FULL_VERSION, xml.release.getFullVersion(stack.getReleaseVersion()), requestedIds);
     setResourceProperty(resource, VERSION_DEF_RELEASE_BUILD, xml.release.build, requestedIds);
     setResourceProperty(resource, VERSION_DEF_RELEASE_COMPATIBLE_WITH, xml.release.compatibleWith, requestedIds);
     setResourceProperty(resource, VERSION_DEF_RELEASE_NOTES, xml.release.releaseNotes, requestedIds);

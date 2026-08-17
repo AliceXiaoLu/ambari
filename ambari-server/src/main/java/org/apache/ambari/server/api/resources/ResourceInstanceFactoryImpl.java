@@ -154,6 +154,10 @@ public class ResourceInstanceFactoryImpl implements ResourceInstanceFactory {
         resourceDefinition = new MemberResourceDefinition();
         break;
 
+      case Mpack:
+        resourceDefinition = new MpackResourceDefinition();
+        break;
+
       case Request:
         resourceDefinition = new RequestResourceDefinition();
         break;
@@ -479,6 +483,10 @@ public class ResourceInstanceFactoryImpl implements ResourceInstanceFactory {
 
       case RemoteCluster:
         resourceDefinition = new RemoteClusterResourceDefinition();
+        break;
+
+      case Auth:
+        resourceDefinition = new AuthResourceDefinition();
         break;
 
       default:

@@ -815,6 +815,20 @@ public class DBAccessorImplTest {
   }
 
   @Test
+  public void testFromSqlTypeToClass() throws Exception {
+    String tableName = getFreeTableName();
+    String columnName = "col1";
+
+    createMyTable(tableName, columnName);
+
+    DBAccessorImpl dbAccessor = injector.getInstance(DBAccessorImpl.class);
+    DBColumnInfo columnInfo =  dbAccessor.getColumnInfo(tableName, columnName);
+
+    assertEquals(columnName.toUpperCase(), columnInfo.getName());
+    assertEquals(String.class, columnInfo.getType());
+  }
+
+  @Test
   public void testBuildQuery() throws Exception {
     String tableName = getFreeTableName();
     createMyTable(tableName);
@@ -830,8 +844,8 @@ public class DBAccessorImplTest {
     assertEquals(String.format("SELECT id, name FROM %s WHERE time='100'", tableName),
     dbAccessor.buildQuery(tableName, new String[] {"id", "name"}, new String[] {"time"}, new String[] {"100"}));
 
-    assertEquals(String.format("SELECT id, name FROM %s", tableName),
-    dbAccessor.buildQuery(tableName, new String[] {"id", "name"}, null, null));
+    assertEquals(String.format("SELECT id, name, time FROM %s", tableName),
+    dbAccessor.buildQuery(tableName, new String[] {"id", "name", "time"}, null, null));
 
     try {
       dbAccessor.buildQuery("invalid_table_name", new String[] {"id", "name"}, new String[] {"time"}, new String[] {"100"});

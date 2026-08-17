@@ -21,20 +21,18 @@ package org.apache.ambari.server.api.services;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.ws.rs.GET;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
 import org.apache.ambari.annotations.SwaggerOverwriteNestedAPI;
 import org.apache.ambari.server.api.resources.ResourceInstance;
 import org.apache.ambari.server.controller.ServiceConfigVersionResponse;
 import org.apache.ambari.server.controller.spi.Resource;
-
 import org.apache.http.HttpStatus;
 
 import io.swagger.annotations.Api;
@@ -67,7 +65,6 @@ public class ServiceConfigVersionService extends BaseService {
    * @return service config version collection resource representation
    */
   @GET
-  @Path("") // This is needed if class level path is not present otherwise no Swagger docs will be generated for this method
   @Produces(MediaType.TEXT_PLAIN)
   @ApiOperation(value = "Get all service config versions", response = ServiceConfigVersionResponse.class,
     responseContainer = RESPONSE_CONTAINER_LIST)

@@ -33,6 +33,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -64,6 +65,7 @@ import org.apache.ambari.server.controller.spi.ResourceAlreadyExistsException;
 import org.apache.ambari.server.controller.spi.SystemException;
 import org.apache.ambari.server.controller.spi.UnsupportedPropertyException;
 import org.apache.ambari.server.controller.utilities.PropertyHelper;
+import org.apache.ambari.server.security.authorization.RoleAuthorization;
 import org.apache.ambari.server.state.ClientConfigFileDefinition;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
@@ -74,6 +76,7 @@ import org.apache.ambari.server.state.DesiredConfig;
 import org.apache.ambari.server.state.PropertyInfo.PropertyType;
 import org.apache.ambari.server.state.Service;
 import org.apache.ambari.server.state.ServiceComponent;
+import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.ServiceInfo;
 import org.apache.ambari.server.state.ServiceOsSpecific;
 import org.apache.ambari.server.state.StackId;
@@ -114,7 +117,7 @@ public class ClientConfigResourceProvider extends AbstractControllerResourceProv
   /**
    * The key property ids for a ClientConfig resource.
    */
-  private static Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
+  private static final Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
       .put(Resource.Type.Cluster, COMPONENT_CLUSTER_NAME_PROPERTY_ID)
       .put(Resource.Type.Service, COMPONENT_SERVICE_NAME_PROPERTY_ID)
       .put(Resource.Type.Component, COMPONENT_COMPONENT_NAME_PROPERTY_ID)
@@ -124,7 +127,7 @@ public class ClientConfigResourceProvider extends AbstractControllerResourceProv
   /**
    * The property ids for a ClientConfig resource.
    */
-  private static Set<String> propertyIds = Sets.newHashSet(
+  private static final Set<String> propertyIds = Sets.newHashSet(
       COMPONENT_CLUSTER_NAME_PROPERTY_ID,
       COMPONENT_SERVICE_NAME_PROPERTY_ID,
       COMPONENT_COMPONENT_NAME_PROPERTY_ID,
@@ -144,6 +147,8 @@ public class ClientConfigResourceProvider extends AbstractControllerResourceProv
   ClientConfigResourceProvider(@Assisted AmbariManagementController managementController) {
     super(Resource.Type.ClientConfig, propertyIds, keyPropertyIds, managementController);
     gson = new Gson();
+
+    setRequiredGetAuthorizations(EnumSet.of(RoleAuthorization.HOST_VIEW_CONFIGS, RoleAuthorization.SERVICE_VIEW_CONFIGS, RoleAuthorization.CLUSTER_VIEW_CONFIGS));
   }
 
   // ----- ResourceProvider ------------------------------------------------
@@ -159,7 +164,7 @@ public class ClientConfigResourceProvider extends AbstractControllerResourceProv
   }
 
   @Override
-  public Set<Resource> getResources(Request request, Predicate predicate)
+  public Set<Resource> getResourcesAuthorized(Request request, Predicate predicate)
           throws SystemException, UnsupportedPropertyException, NoSuchResourceException, NoSuchParentResourceException {
 
     Set<Resource> resources = new HashSet<>();
@@ -396,10 +401,17 @@ public class ClientConfigResourceProvider extends AbstractControllerResourceProv
 
         TreeMap<String, String> clusterLevelParams = null;
         TreeMap<String, String> ambariLevelParams = null;
+        TreeMap<String, String> topologyCommandParams = new TreeMap<>();
         if (getManagementController() instanceof AmbariManagementControllerImpl){
           AmbariManagementControllerImpl controller = ((AmbariManagementControllerImpl)getManagementController());
           clusterLevelParams = controller.getMetadataClusterLevelParams(cluster, stackId);
           ambariLevelParams = controller.getMetadataAmbariLevelParams();
+
+          Service s = cluster.getService(serviceName);
+          ServiceComponent sc = s.getServiceComponent(componentName);
+          ServiceComponentHost sch = sc.getServiceComponentHost(response.getHostname());
+
+          topologyCommandParams = controller.getTopologyCommandParams(cluster.getClusterId(), serviceName, componentName, sch);
         }
         TreeMap<String, String> agentLevelParams = new TreeMap<>();
         agentLevelParams.put("hostname", hostName);
@@ -410,6 +422,7 @@ public class ClientConfigResourceProvider extends AbstractControllerResourceProv
         commandParams.put("env_configs_list", envConfigs);
         commandParams.put("properties_configs_list", propertiesConfigs);
         commandParams.put("output_file", componentName + "-configs" + Configuration.DEF_ARCHIVE_EXTENSION);
+        commandParams.putAll(topologyCommandParams);
 
         Map<String, Object> jsonContent = new TreeMap<>();
         jsonContent.put("configurations", configurations);
@@ -812,6 +825,8 @@ public class ClientConfigResourceProvider extends AbstractControllerResourceProv
         BufferedOutputStream bOut = new BufferedOutputStream(fOut);
         GzipCompressorOutputStream gzOut = new GzipCompressorOutputStream(bOut);
         TarArchiveOutputStream tOut = new TarArchiveOutputStream(gzOut);
+        tOut.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
+        tOut.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
 
         try {
           for (ServiceComponentHostResponse schResponse : serviceComponentHostResponses) {

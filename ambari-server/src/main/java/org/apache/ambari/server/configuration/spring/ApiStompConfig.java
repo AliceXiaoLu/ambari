@@ -17,7 +17,9 @@
  */
 package org.apache.ambari.server.configuration.spring;
 
+import org.apache.ambari.server.api.stomp.NamedTasksSubscriptions;
 import org.apache.ambari.server.api.stomp.TestController;
+import org.apache.ambari.server.events.DefaultMessageEmitter;
 import org.apache.ambari.server.events.listeners.requests.STOMPUpdateListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -25,17 +27,18 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.springframework.web.socket.config.annotation.AbstractWebSocketMessageBrokerConfigurer;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 import com.google.inject.Injector;
+
 
 @Configuration
 @EnableWebSocketMessageBroker
 @ComponentScan(basePackageClasses = {TestController.class})
 @Import(RootStompConfig.class)
-public class ApiStompConfig extends AbstractWebSocketMessageBrokerConfigurer {
+public class ApiStompConfig implements WebSocketMessageBrokerConfigurer {
   private final String HEARTBEAT_THREAD_NAME = "ws-heartbeat-thread-";
   private final int HEARTBEAT_POOL_SIZE = 1;
   private final org.apache.ambari.server.configuration.Configuration configuration;
@@ -46,13 +49,18 @@ public class ApiStompConfig extends AbstractWebSocketMessageBrokerConfigurer {
 
   @Bean
   public STOMPUpdateListener requestSTOMPListener(Injector injector) {
-    return new STOMPUpdateListener(injector);
+    return new STOMPUpdateListener(injector, DefaultMessageEmitter.DEFAULT_API_EVENT_TYPES);
+  }
+
+  @Bean
+  public NamedTasksSubscriptions namedTasksSubscribtions(Injector injector) {
+    return injector.getInstance(NamedTasksSubscriptions.class);
   }
 
   @Override
   public void registerStompEndpoints(StompEndpointRegistry registry) {
     registry.addEndpoint("/v1")
-      .setAllowedOrigins("*")
+      .setAllowedOriginPatterns("*")
       .withSockJS().setHeartbeatTime(configuration.getAPIHeartbeatInterval());
   }
 
@@ -63,7 +71,7 @@ public class ApiStompConfig extends AbstractWebSocketMessageBrokerConfigurer {
     taskScheduler.setThreadNamePrefix(HEARTBEAT_THREAD_NAME);
     taskScheduler.initialize();
 
-    registry.enableSimpleBroker("/").setTaskScheduler(taskScheduler)
+    registry.setPreservePublishOrder(true).enableSimpleBroker("/").setTaskScheduler(taskScheduler)
         .setHeartbeatValue(new long[]{configuration.getAPIHeartbeatInterval(), configuration.getAPIHeartbeatInterval()});
   }
 }

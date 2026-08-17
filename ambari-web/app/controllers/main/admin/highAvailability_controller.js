@@ -65,6 +65,10 @@ App.MainAdminHighAvailabilityController = App.WizardController.extend({
   enableRMHighAvailability: function () {
     //Prerequisite Checks
     var message = [];
+
+    if (App.HostComponent.find().findProperty('componentName', 'RESOURCEMANAGER').get('workStatus') !== 'STARTED') {
+      message.push(Em.I18n.t('admin.rm_highAvailability.error.resourceManagerStarted'));
+    }
     if (App.HostComponent.find().filterProperty('componentName', 'ZOOKEEPER_SERVER').length < 3) {
       message.push(Em.I18n.t('admin.rm_highAvailability.error.zooKeeperNum'));
     }
@@ -135,6 +139,28 @@ App.MainAdminHighAvailabilityController = App.WizardController.extend({
       return false;
     }
     App.router.transitionTo('main.services.enableNameNodeFederation');
+    return true;
+  },
+
+  /**
+   * enable router Based Federation
+   * @return {Boolean}
+   */
+  enableRouterFederation: function () {
+    //Prerequisite Checks
+    var message = [];
+    if (!App.HostComponent.find().filterProperty('componentName', 'ZOOKEEPER_SERVER').everyProperty('workStatus', 'STARTED')) {
+      message.push(Em.I18n.t('admin.nameNodeFederation.wizard.required.zookeepers'));
+    }
+
+    if (!App.HostComponent.find().filterProperty('componentName', 'JOURNALNODE').everyProperty('workStatus', 'STARTED')) {
+      message.push(Em.I18n.t('admin.nameNodeFederation.wizard.required.journalnodes'));
+    }
+    if (message.length > 0) {
+      this.showErrorPopup(message);
+      return false;
+    }
+    App.router.transitionTo('main.services.enableRouterFederation');
     return true;
   },
 

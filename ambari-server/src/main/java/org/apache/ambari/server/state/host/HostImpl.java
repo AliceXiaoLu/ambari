@@ -29,6 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.HostNotFoundException;
@@ -71,11 +72,8 @@ import org.apache.ambari.server.state.HostHealthStatus;
 import org.apache.ambari.server.state.HostHealthStatus.HealthStatus;
 import org.apache.ambari.server.state.HostState;
 import org.apache.ambari.server.state.MaintenanceState;
-import org.apache.ambari.server.state.Service;
-import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentHost;
 import org.apache.ambari.server.state.StackId;
-import org.apache.ambari.server.state.State;
 import org.apache.ambari.server.state.UpgradeState;
 import org.apache.ambari.server.state.configgroup.ConfigGroup;
 import org.apache.ambari.server.state.fsm.InvalidStateTransitionException;
@@ -362,11 +360,9 @@ public class HostImpl implements Host {
       }
 
       host.topologyManager.onHostRegistered(host, associatedWithCluster);
-      try {
-        host.restoreComponentsStatuses();
-      } catch (AmbariException e1) {
-        LOG.error("Unable to restore last valid host components status for host", e1);
-      }
+
+      host.setHealthStatus(new HostHealthStatus(HealthStatus.HEALTHY,
+          host.getHealthStatus().getHealthReport()));
       // initialize agent times in the last time to prevent setting registering/heartbeat times for failed registration.
       host.updateHostTimestamps(e);
     }
@@ -770,6 +766,11 @@ public class HostImpl implements Host {
   }
 
   @Override
+  public String getOsFamily(Map<String, String> hostAttributes) {
+	  return getOSFamilyFromHostAttributes(hostAttributes);
+  }
+
+  @Override
   public String getOSFamilyFromHostAttributes(Map<String, String> hostAttributes) {
     try {
       String majorVersion = hostAttributes.get(OS_RELEASE_VERSION).split("\\.")[0];
@@ -811,6 +812,15 @@ public class HostImpl implements Host {
   }
 
   @Override
+  public HostHealthStatus getHealthStatus(HostStateEntity hostStateEntity) {
+    if (hostStateEntity != null) {
+      return gson.fromJson(hostStateEntity.getHealthStatus(), HostHealthStatus.class);
+    }
+
+    return null;
+  }
+
+  @Override
   public void setHealthStatus(HostHealthStatus healthStatus) {
     HostStateEntity hostStateEntity = getHostStateEntity();
     if (hostStateEntity != null) {
@@ -839,6 +849,11 @@ public class HostImpl implements Host {
   @Override
   public Map<String, String> getHostAttributes() {
     return gson.fromJson(getHostEntity().getHostAttributes(), hostAttributesType);
+  }
+
+  @Override
+  public Map<String, String> getHostAttributes(HostEntity hostEntity) {
+    return gson.fromJson(hostEntity.getHostAttributes(), hostAttributesType);
   }
 
   @Override
@@ -889,10 +904,12 @@ public class HostImpl implements Host {
     this.lastHeartbeatTime = lastHeartbeatTime;
   }
 
+  @Override
   public long getLastAgentStartTime() {
     return lastAgentStartTime;
   }
 
+  @Override
   public void setLastAgentStartTime(long lastAgentStartTime) {
     this.lastAgentStartTime = lastAgentStartTime;
   }
@@ -900,6 +917,15 @@ public class HostImpl implements Host {
   @Override
   public AgentVersion getAgentVersion() {
     HostStateEntity hostStateEntity = getHostStateEntity();
+    if (hostStateEntity != null) {
+      return gson.fromJson(hostStateEntity.getAgentVersion(), AgentVersion.class);
+    }
+
+    return null;
+  }
+
+  @Override
+  public AgentVersion getAgentVersion(HostStateEntity hostStateEntity) {
     if (hostStateEntity != null) {
       return gson.fromJson(hostStateEntity.getAgentVersion(), AgentVersion.class);
     }
@@ -919,7 +945,8 @@ public class HostImpl implements Host {
   @Override
   public long getTimeInState() {
     HostStateEntity hostStateEntity = getHostStateEntity();
-    return hostStateEntity != null ? hostStateEntity.getTimeInState() :  null;
+    Long timeInState = hostStateEntity != null ? hostStateEntity.getTimeInState() :  null;
+    return timeInState != null ? timeInState : 0L;
   }
 
   @Override
@@ -939,7 +966,7 @@ public class HostImpl implements Host {
 
   @Override
   public void setStatus(String status) {
-    if (this.status != status) {
+    if (!Objects.equals(this.status, status)) {
       ambariEventPublisher.publish(new HostStatusUpdateEvent(getHostName(), status));
     }
     this.status = status;
@@ -968,26 +995,33 @@ public class HostImpl implements Host {
   public HostResponse convertToResponse() {
     HostResponse r = new HostResponse(getHostName());
 
-    r.setAgentVersion(getAgentVersion());
-    r.setPhCpuCount(getPhCpuCount());
-    r.setCpuCount(getCpuCount());
+    HostEntity hostEntity = getHostEntity();
+    HostStateEntity hostStateEntity = getHostStateEntity();
+
+    Map<String, String> hostAttributes = getHostAttributes(hostEntity);
+    r.setHostAttributes(hostAttributes);
+    r.setOsFamily(getOsFamily(hostAttributes));
+
+    r.setAgentVersion(getAgentVersion(hostStateEntity));
+    r.setHealthStatus(getHealthStatus(hostStateEntity));
+
+    r.setPhCpuCount(hostEntity.getPhCpuCount());
+    r.setCpuCount(hostEntity.getCpuCount());
+    r.setIpv4(hostEntity.getIpv4());
+    r.setOsArch(hostEntity.getOsArch());
+    r.setOsType(hostEntity.getOsType());
+    r.setTotalMemBytes(hostEntity.getTotalMem());
+    r.setLastRegistrationTime(hostEntity.getLastRegistrationTime());
+    r.setPublicHostName(hostEntity.getPublicHostName());
+    r.setRackInfo(hostEntity.getRackInfo());
+
     r.setDisksInfo(getDisksInfo());
-    r.setHealthStatus(getHealthStatus());
-    r.setHostAttributes(getHostAttributes());
-    r.setIpv4(getIPv4());
+    r.setStatus(getStatus());
     r.setLastHeartbeatTime(getLastHeartbeatTime());
     r.setLastAgentEnv(lastAgentEnv);
-    r.setLastRegistrationTime(getLastRegistrationTime());
-    r.setOsArch(getOsArch());
-    r.setOsType(getOsType());
-    r.setOsFamily(getOsFamily());
-    r.setRackInfo(getRackInfo());
-    r.setTotalMemBytes(getTotalMemBytes());
-    r.setPublicHostName(getPublicHostName());
-    r.setHostState(getState());
-    r.setStatus(getStatus());
     r.setRecoveryReport(getRecoveryReport());
     r.setRecoverySummary(getRecoveryReport().getSummary());
+    r.setHostState(getState());
     return r;
   }
 
@@ -1072,9 +1106,8 @@ public class HostImpl implements Host {
   @Override
   public Map<String, HostConfig> getDesiredHostConfigs(Cluster cluster,
       Map<String, DesiredConfig> clusterDesiredConfigs) throws AmbariException {
-    Map<String, HostConfig> hostConfigMap = new HashMap<>();
 
-    if( null == cluster ){
+    if(null == cluster){
       clusterDesiredConfigs = new HashMap<>();
     }
 
@@ -1083,42 +1116,36 @@ public class HostImpl implements Host {
       clusterDesiredConfigs = cluster.getDesiredConfigs();
     }
 
-    if (clusterDesiredConfigs != null) {
-      for (Map.Entry<String, DesiredConfig> desiredConfigEntry
-          : clusterDesiredConfigs.entrySet()) {
+    Map<String, HostConfig> hostConfigMap = clusterDesiredConfigs.entrySet().stream().collect(Collectors.toMap(
+      Map.Entry::getKey,
+      desiredConfigEntry -> {
         HostConfig hostConfig = new HostConfig();
         hostConfig.setDefaultVersionTag(desiredConfigEntry.getValue().getTag());
-        hostConfigMap.put(desiredConfigEntry.getKey(), hostConfig);
+        return hostConfig;
       }
+    ));
+
+    Map<Long, ConfigGroup> configGroups = (cluster == null) ? new HashMap<>() : cluster.getConfigGroupsByHostId(getHostId());
+    if (configGroups == null || configGroups.isEmpty()) {
+      return hostConfigMap;
     }
 
-    Map<Long, ConfigGroup> configGroups = (cluster == null) ? new HashMap<>() : cluster.getConfigGroupsByHostname(getHostName());
-
-    if (configGroups != null && !configGroups.isEmpty()) {
-      for (ConfigGroup configGroup : configGroups.values()) {
-        for (Map.Entry<String, Config> configEntry : configGroup
-            .getConfigurations().entrySet()) {
-
-          String configType = configEntry.getKey();
-          // HostConfig config holds configType -> versionTag, per config group
-          HostConfig hostConfig = hostConfigMap.get(configType);
-          if (hostConfig == null) {
-            hostConfig = new HostConfig();
-            hostConfigMap.put(configType, hostConfig);
-            if (cluster != null) {
-              Config conf = cluster.getDesiredConfigByType(configType);
-              if(conf == null) {
-                LOG.error("Config inconsistency exists:"+
-                    " unknown configType="+configType);
-              } else {
-                hostConfig.setDefaultVersionTag(conf.getTag());
-              }
-            }
+    for (ConfigGroup configGroup : configGroups.values()) {
+      for (Map.Entry<String, Config> configEntry : configGroup.getConfigurations().entrySet()) {
+        String configType = configEntry.getKey();
+        // HostConfig config holds configType -> versionTag, per config group
+        HostConfig hostConfig = hostConfigMap.get(configType);
+        if (hostConfig == null) {
+          hostConfig = new HostConfig();
+          hostConfigMap.put(configType, hostConfig);
+          Config conf = cluster.getDesiredConfigByType(configType);
+          if(conf == null) {
+            LOG.error("Config inconsistency exists: unknown configType=" + configType);
+          } else {
+            hostConfig.setDefaultVersionTag(conf.getTag());
           }
-          Config config = configEntry.getValue();
-          hostConfig.getConfigGroupOverrides().put(configGroup.getId(),
-              config.getTag());
         }
+        hostConfig.getConfigGroupOverrides().put(configGroup.getId(), configEntry.getValue().getTag());
       }
     }
     return hostConfigMap;
@@ -1210,28 +1237,6 @@ public class HostImpl implements Host {
     }
 
     return false;
-  }
-
-  public void restoreComponentsStatuses() throws AmbariException {
-    Long clusterId = null;
-    for (Cluster cluster : clusters.getClustersForHost(getHostName())) {
-      clusterId = cluster.getClusterId();
-      for (ServiceComponentHost sch : cluster.getServiceComponentHosts(getHostName())) {
-        Service s = cluster.getService(sch.getServiceName());
-        ServiceComponent sc = s.getServiceComponent(sch.getServiceComponentName());
-        if (!sc.isClientComponent() &&
-            sch.getState().equals(State.UNKNOWN)) {
-          State lastValidState = sch.getLastValidState();
-          LOG.warn("Restore component state to last valid state for component " + sc.getName() + " on " +
-              getHostName() + " to " + lastValidState);
-          sch.setState(lastValidState);
-        }
-      }
-    }
-    //TODO
-    if (clusterId != null) {
-      calculateHostStatus(clusterId);
-    }
   }
 
   @Override

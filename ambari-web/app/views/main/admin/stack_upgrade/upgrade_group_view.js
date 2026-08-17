@@ -45,7 +45,6 @@ App.upgradeGroupView = Em.View.extend({
     this.collapseLowerLevels(event.context);
     event.context.set('isExpanded', !isExpanded);
     if (!isExpanded && event.context.get('type') === 'ITEM') {
-      event.context.set('isTasksLoaded', false);
       this.doPolling(event.context);
     }
   },
@@ -74,10 +73,12 @@ App.upgradeGroupView = Em.View.extend({
     var self = this;
 
     if (item && item.get('isExpanded')) {
-      this.get('controller').getUpgradeItem(item).complete(function () {
-        self.set('timer', setTimeout(function () {
-          self.doPolling(item);
-        }, App.bgOperationsUpdateInterval));
+      this.get('controller').getUpgradeItem(item).then(function () {
+        if (!item.get('isCompleted')) {
+          self.set('timer', setTimeout(function () {
+            self.doPolling(item);
+          }, App.bgOperationsUpdateInterval));
+        }
       });
     } else {
       clearTimeout(this.get('timer'));

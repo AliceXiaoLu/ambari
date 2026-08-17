@@ -51,16 +51,17 @@ import org.apache.ambari.server.security.encryption.CredentialStoreService;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Config;
 import org.apache.commons.codec.binary.Base64;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.client.utils.URIBuilder;
-import org.codehaus.jackson.map.AnnotationIntrospector;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.ObjectReader;
-import org.codehaus.jackson.map.annotate.JsonSerialize;
-import org.codehaus.jackson.map.introspect.JacksonAnnotationIntrospector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.AnnotationIntrospector;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.introspect.JacksonAnnotationIntrospector;
 
 
 /**
@@ -156,6 +157,7 @@ public class LoggingRequestHelperImpl implements LoggingRequestHelper {
     this.logSearchReadTimeoutInMilliseconds = logSearchReadTimeoutInMilliseconds;
   }
 
+  @Override
   public LogQueryResponse sendQueryRequest(Map<String, String> queryParameters) {
     try {
       // use the Apache builder to create the correct URI
@@ -302,6 +304,7 @@ public class LoggingRequestHelperImpl implements LoggingRequestHelper {
     return null;
   }
 
+  @Override
   public HostLogFilesResponse sendGetLogFileNamesRequest(String hostName) {
     try {
       // use the Apache builder to create the correct URI
@@ -439,7 +442,7 @@ public class LoggingRequestHelperImpl implements LoggingRequestHelper {
     } else {
       uriBuilder.setScheme(scheme);
       uriBuilder.setHost(hostName);
-      uriBuilder.setPort(Integer.valueOf(portNumber));
+      uriBuilder.setPort(Integer.parseInt(portNumber));
     }
     return uriBuilder;
   }
@@ -478,7 +481,7 @@ public class LoggingRequestHelperImpl implements LoggingRequestHelper {
     AnnotationIntrospector introspector =
       new JacksonAnnotationIntrospector();
     mapper.setAnnotationIntrospector(introspector);
-    mapper.getSerializationConfig().setSerializationInclusion(JsonSerialize.Inclusion.NON_NULL);
+    mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
     return mapper;
   }
 

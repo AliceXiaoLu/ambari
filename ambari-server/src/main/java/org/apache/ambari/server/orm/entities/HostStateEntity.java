@@ -18,22 +18,23 @@
 
 package org.apache.ambari.server.orm.entities;
 
-import static org.apache.commons.lang.StringUtils.defaultString;
+import java.util.Objects;
 
-import javax.persistence.Basic;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.OneToOne;
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.OneToOne;
 
 import org.apache.ambari.server.state.HostState;
+import org.apache.commons.lang.StringUtils;
 
-@javax.persistence.Table(name = "hoststate")
+@jakarta.persistence.Table(name = "hoststate")
 @Entity
 @NamedQueries({
     @NamedQuery(name = "hostStateByHostId", query =
@@ -42,7 +43,7 @@ import org.apache.ambari.server.state.HostState;
 })
 public class HostStateEntity {
   
-  @javax.persistence.Column(name = "host_id", nullable = false, insertable = false, updatable = false)
+  @jakarta.persistence.Column(name = "host_id", nullable = false, insertable = false, updatable = false)
   @Id
   private Long hostId;
 
@@ -50,7 +51,7 @@ public class HostStateEntity {
   @Basic
   private Long availableMem = 0L;
 
-  @javax.persistence.Column(name = "time_in_state", nullable = false, insertable = true, updatable = true)
+  @jakarta.persistence.Column(name = "time_in_state", nullable = false, insertable = true, updatable = true)
   @Basic
   private Long timeInState = 0L;
 
@@ -107,7 +108,7 @@ public class HostStateEntity {
   }
 
   public String getAgentVersion() {
-    return defaultString(agentVersion);
+    return StringUtils.defaultString(agentVersion);
   }
 
   public void setAgentVersion(String agentVersion) {
@@ -136,24 +137,16 @@ public class HostStateEntity {
     if (o == null || getClass() != o.getClass()) return false;
 
     HostStateEntity that = (HostStateEntity) o;
-
-    if (hostId != null ? hostId != that.hostId : that.hostId != null) return false;
-    if (availableMem != null ? !availableMem.equals(that.availableMem) : that.availableMem != null) return false;
-    if (timeInState != null ? !timeInState.equals(that.timeInState) : that.timeInState!= null) return false;
-    if (agentVersion != null ? !agentVersion.equals(that.agentVersion) : that.agentVersion != null) return false;
-    if (currentState != null ? !currentState.equals(that.currentState) : that.currentState != null) return false;
-
-    return true;
+    return Objects.equals(hostId, that.hostId) &&
+            Objects.equals(availableMem, that.availableMem) &&
+            Objects.equals(timeInState, that.timeInState) &&
+            Objects.equals(agentVersion, that.agentVersion) &&
+            currentState == that.currentState;
   }
 
   @Override
   public int hashCode() {
-    int result = hostId != null ? hostId.intValue() : 0;
-    result = 31 * result + (availableMem != null ? availableMem.intValue() : 0);
-    result = 31 * result + (timeInState != null ? timeInState.intValue() : 0);
-    result = 31 * result + (agentVersion != null ? agentVersion.hashCode() : 0);
-    result = 31 * result + (currentState != null ? currentState.hashCode() : 0);
-    return result;
+    return Objects.hash(hostId, availableMem, timeInState, agentVersion, currentState);
   }
 
   public HostEntity getHostEntity() {

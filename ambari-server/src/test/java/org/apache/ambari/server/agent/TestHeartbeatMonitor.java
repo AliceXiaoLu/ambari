@@ -22,6 +22,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.sql.SQLException;
 import java.util.Collections;
@@ -41,6 +42,7 @@ import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
 import org.apache.ambari.server.orm.OrmTestHelper;
 import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
+import org.apache.ambari.server.security.encryption.Encryptor;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
@@ -117,8 +119,10 @@ public class TestHeartbeatMonitor {
     String hostname = "host1";
     fsm.addHost(hostname);
     ActionManager am = mock(ActionManager.class);
+    Configuration configuration = mock(Configuration.class);
+    when(configuration.getHeartbeatMonitorInterval()).thenReturn(10);
     HeartbeatMonitor hm = new HeartbeatMonitor(fsm, am, 10, injector);
-    HeartBeatHandler handler = new HeartBeatHandler(fsm, am, injector);
+    HeartBeatHandler handler = new HeartBeatHandler(configuration, fsm, am, Encryptor.NONE, injector);
     Register reg = new Register();
     reg.setHostname(hostname);
     reg.setResponseId(12);
@@ -186,7 +190,9 @@ public class TestHeartbeatMonitor {
     ActionManager am = mock(ActionManager.class);
     HeartbeatMonitor hm = new HeartbeatMonitor(clusters, am,
       heartbeatMonitorWakeupIntervalMS, injector);
-    HeartBeatHandler handler = new HeartBeatHandler(clusters, am, injector);
+    Configuration configuration = mock(Configuration.class);
+    when(configuration.getHeartbeatMonitorInterval()).thenReturn(60000);
+    HeartBeatHandler handler = new HeartBeatHandler(configuration, clusters, am, Encryptor.NONE, injector);
     Register reg = new Register();
     reg.setHostname(hostname1);
     reg.setResponseId(12);
@@ -305,7 +311,9 @@ public class TestHeartbeatMonitor {
     ActionManager am = mock(ActionManager.class);
     HeartbeatMonitor hm = new HeartbeatMonitor(clusters, am,
       heartbeatMonitorWakeupIntervalMS, injector);
-    HeartBeatHandler handler = new HeartBeatHandler(clusters, am, injector);
+    Configuration configuration = mock(Configuration.class);
+    when(configuration.getHeartbeatMonitorInterval()).thenReturn(60000);
+    HeartBeatHandler handler = new HeartBeatHandler(configuration, clusters, am, Encryptor.NONE, injector);
     Register reg = new Register();
     reg.setHostname(hostname1);
     reg.setResponseId(12);
@@ -400,8 +408,9 @@ public class TestHeartbeatMonitor {
     ActionManager am = mock(ActionManager.class);
     HeartbeatMonitor hm = new HeartbeatMonitor(clusters, am,
       heartbeatMonitorWakeupIntervalMS, injector);
-    HeartBeatHandler handler = new HeartBeatHandler(clusters, am,
-        injector);
+    Configuration configuration = mock(Configuration.class);
+    when(configuration.getHeartbeatMonitorInterval()).thenReturn(60000);
+    HeartBeatHandler handler = new HeartBeatHandler(configuration, clusters, am, Encryptor.NONE, injector);
     Register reg = new Register();
     reg.setHostname(hostname1);
     reg.setResponseId(12);
@@ -476,7 +485,9 @@ public class TestHeartbeatMonitor {
 
     ActionManager am = mock(ActionManager.class);
     HeartbeatMonitor hm = new HeartbeatMonitor(clusters, am, 10, injector);
-    HeartBeatHandler handler = new HeartBeatHandler(clusters, am, injector);
+    Configuration configuration = mock(Configuration.class);
+    when(configuration.getHeartbeatMonitorInterval()).thenReturn(10);
+    HeartBeatHandler handler = new HeartBeatHandler(configuration, clusters, am, Encryptor.NONE, injector);
 
     Register reg = new Register();
     reg.setHostname(hostname1);
@@ -598,7 +609,9 @@ public class TestHeartbeatMonitor {
     ActionManager am = mock(ActionManager.class);
     HeartbeatMonitor hm = new HeartbeatMonitor(clusters, am,
       heartbeatMonitorWakeupIntervalMS, injector);
-    HeartBeatHandler handler = new HeartBeatHandler(clusters, am, injector);
+    Configuration configuration = mock(Configuration.class);
+    when(configuration.getHeartbeatMonitorInterval()).thenReturn(60000);
+    HeartBeatHandler handler = new HeartBeatHandler(configuration, clusters, am, Encryptor.NONE, injector);
     Register reg = new Register();
     reg.setHostname(hostname1);
     reg.setResponseId(12);

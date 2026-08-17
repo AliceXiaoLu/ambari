@@ -67,6 +67,9 @@ App.BulkOperationsController = Em.Controller.extend({
         else if (operationData.action === 'DELETE'){
           this._bulkOperationForHostsDelete(hosts);
         }
+        else if (operationData.action === 'CONFIGURE') {
+            this.bulkOperationForHostsRefreshConfig(operationData, hosts);
+        }
         else {
           if (operationData.action === 'PASSIVE_STATE') {
             this.bulkOperationForHostsPassiveState(operationData, hosts);
@@ -318,6 +321,41 @@ App.BulkOperationsController = Em.Controller.extend({
   },
 
   /**
+   * Bulk refresh configs for selected hosts
+   * @param {Object} operationData - data about bulk operation (action, hostComponents etc)
+   * @param {Ember.Enumerable} hosts - list of affected/selected hosts
+   */
+  bulkOperationForHostsRefreshConfig: function (operationData, hosts) {
+    return batchUtils.getComponentsFromServer({
+      passiveState: 'OFF',
+      hosts: hosts.mapProperty('hostName'),
+      displayParams: ['host_components/HostRoles/component_name']
+    }, this._getComponentsFromServerForRefreshConfigsCallback);
+  },
+
+  /**
+   *
+   * @param {object} data
+   * @private
+   * @method _getComponentsFromServerForRefreshConfigsCallback
+   */
+  _getComponentsFromServerForRefreshConfigsCallback: function (data) {
+    var hostComponents = [];
+    var clients = App.components.get('clients');
+    data.items.forEach(function (host) {
+      host.host_components.forEach(function (hostComponent) {
+        if (clients.contains((hostComponent.HostRoles.component_name))) {
+          hostComponents.push(O.create({
+            componentName: hostComponent.HostRoles.component_name,
+            hostName: host.Hosts.host_name
+          }));
+        }
+      })
+    });
+    batchUtils.restartHostComponents(hostComponents, Em.I18n.t('rollingrestart.context.configs.allOnSelectedHosts'), "HOST");
+  },
+
+  /**
    * Bulk delete selected hosts
    * @param {String} hosts - list of affected host names
    */
@@ -400,7 +438,7 @@ App.BulkOperationsController = Em.Controller.extend({
 
       bodyClass: Em.View.extend({
         templateName: require('templates/main/host/delete_hosts_result_popup'),
-        message: Em.I18n.t('hosts.bulkOperation.deleteHosts.dryRun.message').format(undeletableHosts.length),
+        message: Em.I18n.t('hosts.bulkOperation.deleteHosts.result.cannot.delete').format(undeletableHosts.length),
         undeletableHosts: undeletableHosts,
         deletedHosts: deletedHosts,
         onToggleHost: function (host) {
@@ -463,6 +501,7 @@ App.BulkOperationsController = Em.Controller.extend({
       return App.ajax.send({
         name: 'bulk_request.hosts.passive_state',
         sender: this,
+        dataType:'text',
         data: {
           hostNames: hostNames.join(','),
           passive_state: operationData.state,
@@ -503,12 +542,12 @@ App.BulkOperationsController = Em.Controller.extend({
     var allHostsWithComponent = data.items.mapProperty('Hosts.host_name');
     var hostsWithComponent = [];
     hosts.forEach(function (host) {
-      var noHeartBeat = App.Host.find().findProperty('hostName', host.hostName).get('isNotHeartBeating');
-      if(allHostsWithComponent.contains(host.hostName) || noHeartBeat) {
+      const isNotHeartBeating = host.state === 'HEARTBEAT_LOST';
+      if(allHostsWithComponent.contains(host.hostName) || isNotHeartBeating) {
         hostsWithComponent.push(Em.Object.create({
           error: {
             key: host.hostName,
-            message: noHeartBeat ? Em.I18n.t('hosts.bulkOperation.confirmation.add.component.noHeartBeat.skip') : Em.I18n.t('hosts.bulkOperation.confirmation.add.component.skip').format(operationData.componentNameFormatted)
+            message: isNotHeartBeating ? Em.I18n.t('hosts.bulkOperation.confirmation.add.component.noHeartBeat.skip') : Em.I18n.t('hosts.bulkOperation.confirmation.add.component.skip').format(operationData.componentNameFormatted)
           },
           isCollapsed: true,
           isBodyVisible: Em.computed.ifThenElse('isCollapsed', 'display: none;', 'display: block;')
@@ -739,7 +778,7 @@ App.BulkOperationsController = Em.Controller.extend({
 
       bodyClass: Em.View.extend({
         templateName: require('templates/main/host/delete_hosts_result_popup'),
-        message: Em.I18n.t('hosts.bulkOperation.delete.component.dryRun.message').format(componentName),
+        message: Em.I18n.t('hosts.bulkOperation.delete.component.result.cannot.delete').format(componentName),
         componentName: componentName,
         undeletableHosts: undeletableHosts,
         deletedHosts: deletedHosts,
@@ -1073,6 +1112,7 @@ App.BulkOperationsController = Em.Controller.extend({
         id: host.id,
         clusterId: host.cluster_id,
         passiveState: host.passive_state,
+        state: host.state,
         hostName: host.host_name,
         hostComponents: host.host_components
       }

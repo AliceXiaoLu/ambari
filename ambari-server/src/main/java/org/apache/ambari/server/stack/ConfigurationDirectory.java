@@ -20,6 +20,7 @@ package org.apache.ambari.server.stack;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -147,7 +148,8 @@ public class ConfigurationDirectory extends StackDefinitionDirectory {
         File propertyFile = new File(propertyFilePath);
         if (propertyFile.exists() && propertyFile.isFile()) {
           try {
-            String propertyValue = FileUtils.readFileToString(propertyFile);
+            String propertyValue =
+                    FileUtils.readFileToString(propertyFile, Charset.defaultCharset());
             boolean valid = true;
             switch (propertyFileType.toLowerCase()) {
               case "xml" :
@@ -178,7 +180,11 @@ public class ConfigurationDirectory extends StackDefinitionDirectory {
           LOG.error("Failed to load value from property file. Properties file {} does not exist", propertyFilePath);
         }
       } else {
-        LOG.error("Failed to load value from property file. Properties directory {} does not exist", propertiesDirFile.getAbsolutePath());
+        if (propertiesDirFile == null) {
+          LOG.error("Failed to load value from property file. Properties directory is null");
+        } else {
+          LOG.error("Failed to load value from property file. Properties directory {} does not exist", propertiesDirFile.getAbsolutePath());
+        }
       }
     }
     props.add(pi);

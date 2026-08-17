@@ -25,8 +25,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import javax.persistence.EntityManager;
-import javax.persistence.Query;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.controller.AmbariManagementController;
@@ -751,7 +751,7 @@ public class UpgradeCatalog260 extends AbstractUpgradeCatalog {
 
                 // Get the keytab file 'config name'.
                 String[] splits = keytabDescriptor.getConfiguration().split("/");
-                if (splits != null && splits.length == 2) {
+                if (splits.length == 2) {
                   updateYarnKerberosDescUpdatedList(splits[1]);
                   LOG.info("    Updated 'yarnKerberosDescUpdatedList' = " + getYarnKerberosDescUpdatedList());
                 }

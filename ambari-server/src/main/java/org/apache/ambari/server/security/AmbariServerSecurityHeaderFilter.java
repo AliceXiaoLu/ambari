@@ -18,7 +18,7 @@
 
 package org.apache.ambari.server.security;
 
-import javax.servlet.ServletRequest;
+import jakarta.servlet.ServletRequest;
 
 import org.apache.ambari.server.configuration.Configuration;
 
@@ -47,6 +47,7 @@ public class AmbariServerSecurityHeaderFilter extends AbstractSecurityHeaderFilt
     setStrictTransportSecurity(configuration.getStrictTransportSecurityHTTPResponseHeader());
     setxFrameOptionsHeader(configuration.getXFrameOptionsHTTPResponseHeader());
     setxXSSProtectionHeader(configuration.getXXSSProtectionHTTPResponseHeader());
+    setContentSecurityPolicyHeader(configuration.getContentSecurityPolicyHTTPResponseHeader());
     setXContentTypeHeader(configuration.getXContentTypeHTTPResponseHeader());
     setCacheControlHeader(configuration.getCacheControlHTTPResponseHeader());
     setPragmaHeader(configuration.getPragmaHTTPResponseHeader());

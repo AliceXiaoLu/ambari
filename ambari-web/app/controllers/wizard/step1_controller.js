@@ -193,12 +193,14 @@ App.WizardStep1Controller = Em.Controller.extend({
    */
   onNetworkIssuesExist: function() {
     if (this.get('networkIssuesExist')) {
-      this.get('content.stacks').forEach(function (stack) {
-        stack.setProperties({
-          usePublicRepo: false,
-          useLocalRepo: true
-        });
-        stack.cleanReposBaseUrls();
+      this.get('content.stacks').forEach(function(stack) {
+        if (!stack.get('usePublicRepo') && !stack.get('useLocalRepo')) {
+          stack.setProperties({
+            usePublicRepo: false,
+            useLocalRepo: true
+          });
+          stack.cleanReposBaseUrls();
+        }
       });
     }
   }.observes('networkIssuesExist'),

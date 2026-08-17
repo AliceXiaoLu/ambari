@@ -25,11 +25,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
-import javax.inject.Singleton;
+import jakarta.inject.Inject;
+import jakarta.inject.Provider;
+import jakarta.inject.Singleton;
 
 import org.apache.ambari.server.AmbariException;
+import org.apache.ambari.server.AmbariRuntimeException;
 import org.apache.ambari.server.agent.stomp.dto.AlertCluster;
 import org.apache.ambari.server.events.AlertDefinitionEventType;
 import org.apache.ambari.server.events.AlertDefinitionsAgentUpdateEvent;
@@ -40,11 +41,12 @@ import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
 import org.apache.ambari.server.orm.dao.AlertDefinitionDAO;
 import org.apache.ambari.server.orm.entities.AlertDefinitionEntity;
 import org.apache.ambari.server.state.Clusters;
+import org.apache.ambari.server.state.DesiredConfig;
 import org.apache.ambari.server.state.alert.AlertDefinition;
 import org.apache.ambari.server.state.alert.AlertDefinitionFactory;
 import org.apache.ambari.server.state.alert.AlertDefinitionHash;
 import org.apache.ambari.server.state.alert.AlertHelper;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,6 +76,12 @@ public class AlertDefinitionsHolder extends AgentHostDataHolder<AlertDefinitions
   @Inject
   public AlertDefinitionsHolder(AmbariEventPublisher eventPublisher) {
     eventPublisher.register(this);
+  }
+
+  @Override
+  protected AlertDefinitionsAgentUpdateEvent getCurrentData(Long hostId,
+      Map<Long, Map<String, DesiredConfig>> cachedClustersDesiredConfigs) throws AmbariException {
+    return getCurrentData(hostId);
   }
 
   @Override
@@ -108,15 +116,17 @@ public class AlertDefinitionsHolder extends AgentHostDataHolder<AlertDefinitions
   }
 
   @Override
-  protected boolean handleUpdate(AlertDefinitionsAgentUpdateEvent update) throws AmbariException {
+  protected AlertDefinitionsAgentUpdateEvent handleUpdate(AlertDefinitionsAgentUpdateEvent current, AlertDefinitionsAgentUpdateEvent update) throws AmbariException {
     Map<Long, AlertCluster> updateClusters = update.getClusters();
     if (updateClusters.isEmpty()) {
-      return false;
+      return null;
     }
+    AlertDefinitionsAgentUpdateEvent result = null;
 
     Long hostId = update.getHostId();
     boolean changed = false;
-    Map<Long, AlertCluster> existingClusters = getData(hostId).getClusters();
+    Map<Long, AlertCluster> existingClusters = current.getClusters();
+    Map<Long, AlertCluster> mergedClusters = new HashMap<>();
 
     switch (update.getEventType()) {
       case UPDATE:
@@ -124,32 +134,48 @@ public class AlertDefinitionsHolder extends AgentHostDataHolder<AlertDefinitions
         if (!existingClusters.keySet().containsAll(updateClusters.keySet())) {
           LOG.info("Unknown clusters in update, perhaps cluster was removed previously");
         }
+        for (Map.Entry<Long, AlertCluster> e : existingClusters.entrySet()) {
+          Long clusterId = e.getKey();
+          if (!updateClusters.containsKey(clusterId)) {
+            mergedClusters.put(clusterId, e.getValue());
+          }
+        }
         for (Map.Entry<Long, AlertCluster> e : updateClusters.entrySet()) {
-          if (update.getEventType().equals(DELETE) && CollectionUtils.isEmpty(e.getValue().getAlertDefinitions())) {
-            existingClusters.remove(e.getKey());
-            changed = true;
+          Long clusterId = e.getKey();
+          if (existingClusters.containsKey(clusterId)) {
+            if (update.getEventType().equals(DELETE) && CollectionUtils.isEmpty(e.getValue().getAlertDefinitions())) {
+              changed = true;
+            } else {
+              AlertCluster mergedCluster = existingClusters.get(e.getKey()).handleUpdate(update.getEventType(), e.getValue());
+              if (mergedCluster != null) {
+                mergedClusters.put(clusterId, mergedCluster);
+                changed = true;
+              }
+            }
           } else {
-            changed |= existingClusters.get(e.getKey()).handleUpdate(update.getEventType(), e.getValue());
+            mergedClusters.put(clusterId, e.getValue());
+            changed = true;
           }
         }
         LOG.debug("Handled {} of alerts for {} cluster(s) on host with id {}, changed = {}", update.getEventType(), updateClusters.size(), hostId, changed);
         break;
       case CREATE:
-        if (!updateClusters.isEmpty()) {
-          if (!Sets.intersection(existingClusters.keySet(), updateClusters.keySet()).isEmpty()) {
-            throw new AmbariException("Existing clusters in create");
-          }
-          existingClusters.putAll(updateClusters);
-          LOG.debug("Handled {} of alerts for {} cluster(s)", update.getEventType(), updateClusters.size());
-          changed = true;
+        if (!Sets.intersection(existingClusters.keySet(), updateClusters.keySet()).isEmpty()) {
+          throw new AmbariException("Existing clusters in create");
         }
+        mergedClusters.putAll(existingClusters);
+        mergedClusters.putAll(updateClusters);
+        LOG.debug("Handled {} of alerts for {} cluster(s)", update.getEventType(), updateClusters.size());
+        changed = true;
         break;
       default:
         LOG.warn("Unhandled event type {}", update.getEventType());
         break;
     }
-
-    return changed;
+    if (changed) {
+      result = new AlertDefinitionsAgentUpdateEvent(CREATE, mergedClusters, current.getHostName(), hostId);
+    }
+    return result;
   }
 
   @Subscribe
@@ -171,10 +197,10 @@ public class AlertDefinitionsHolder extends AgentHostDataHolder<AlertDefinitions
     }
   }
 
-  private void safelyUpdateData(AlertDefinitionsAgentUpdateEvent event) {
+  private void safelyUpdateData(AlertDefinitionsAgentUpdateEvent event) throws AmbariException {
     try {
       updateData(event);
-    } catch (AmbariException e) {
+    } catch (AmbariRuntimeException e) {
       LOG.warn(String.format("Failed to %s alert definitions for host %s", event.getEventType(), event.getHostName()), e);
     }
   }

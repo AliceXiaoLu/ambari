@@ -31,7 +31,8 @@ import java.util.Map;
 import java.util.logging.LogManager;
 
 import javax.crypto.BadPaddingException;
-import javax.servlet.DispatcherType;
+
+import jakarta.servlet.DispatcherType;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.StateRecoveryManager;
@@ -39,9 +40,9 @@ import org.apache.ambari.server.StaticallyInject;
 import org.apache.ambari.server.actionmanager.ActionManager;
 import org.apache.ambari.server.actionmanager.HostRoleCommandFactory;
 import org.apache.ambari.server.agent.HeartBeatHandler;
-import org.apache.ambari.server.agent.rest.AgentResource;
 import org.apache.ambari.server.api.AmbariErrorHandler;
 import org.apache.ambari.server.api.AmbariPersistFilter;
+import org.apache.ambari.server.api.ContentTypeOverrideFilter;
 import org.apache.ambari.server.api.MethodOverrideFilter;
 import org.apache.ambari.server.api.UserNameOverrideFilter;
 import org.apache.ambari.server.api.rest.BootStrapResource;
@@ -83,7 +84,10 @@ import org.apache.ambari.server.controller.utilities.KerberosIdentityCleaner;
 import org.apache.ambari.server.events.AmbariPropertiesChangedEvent;
 import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
 import org.apache.ambari.server.ldap.LdapModule;
+import org.apache.ambari.server.listeners.WebSocketInitializerListener;
 import org.apache.ambari.server.metrics.system.MetricsService;
+import org.apache.ambari.server.metrics.system.impl.MetricsConfiguration;
+import org.apache.ambari.server.metrics.system.impl.MetricsServiceImpl;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.PersistenceType;
 import org.apache.ambari.server.orm.dao.BlueprintDAO;
@@ -110,6 +114,7 @@ import org.apache.ambari.server.security.authorization.Users;
 import org.apache.ambari.server.security.unsecured.rest.CertificateDownload;
 import org.apache.ambari.server.security.unsecured.rest.CertificateSign;
 import org.apache.ambari.server.security.unsecured.rest.ConnectionInfo;
+import org.apache.ambari.server.serveraction.kerberos.stageutils.KerberosKeytabController;
 import org.apache.ambari.server.stack.UpdateActiveRepoVersionOnStartup;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.topology.AmbariContext;
@@ -129,15 +134,16 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpVersion;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.velocity.app.Velocity;
+import org.eclipse.jetty.server.CustomRequestLog;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
-import org.eclipse.jetty.server.NCSARequestLog;
 import org.eclipse.jetty.server.SecureRequestCustomizer;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.SessionIdManager;
 import org.eclipse.jetty.server.SslConnectionFactory;
+import org.eclipse.jetty.server.SymlinkAllowedResourceAliasChecker;
 import org.eclipse.jetty.server.handler.HandlerCollection;
 import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.server.handler.gzip.GzipHandler;
@@ -147,9 +153,12 @@ import org.eclipse.jetty.servlet.DefaultServlet;
 import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
-import org.eclipse.jetty.servlets.GzipFilter;
+import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
+import org.eclipse.jetty.websocket.server.config.JettyWebSocketServletContainerInitializer;
+import org.glassfish.jersey.server.ResourceConfig;
+import org.glassfish.jersey.servlet.ServletContainer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.bridge.SLF4JBridgeHandler;
@@ -161,6 +170,7 @@ import org.springframework.web.context.request.RequestContextListener;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
 import org.springframework.web.filter.DelegatingFilterProxy;
 import org.springframework.web.servlet.DispatcherServlet;
+import org.springframework.web.socket.config.WebSocketMessageBrokerStats;
 
 import com.google.common.base.Joiner;
 import com.google.common.util.concurrent.ServiceManager;
@@ -172,7 +182,6 @@ import com.google.inject.Scopes;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.google.inject.persist.Transactional;
-import com.sun.jersey.spi.container.servlet.ServletContainer;
 
 
 @Singleton
@@ -198,6 +207,7 @@ public class AmbariServer {
    */
   public static final EnumSet<DispatcherType> DISPATCHER_TYPES = EnumSet.of(DispatcherType.REQUEST);
   private static final int DEFAULT_ACCEPTORS_COUNT = 1;
+  private static final String[] DEPRECATED_SSL_PROTOCOLS = new String[] {"TLSv1"};
 
   static {
     Velocity.setProperty("runtime.log.logsystem.log4j.logger", VELOCITY_LOG_CATEGORY);
@@ -386,7 +396,14 @@ public class AmbariServer {
       if (configs.isAgentApiGzipped()) {
         configureHandlerCompression(agentroot);
       }
+
+      JettyWebSocketServletContainerInitializer initializerForAgentroot = new JettyWebSocketServletContainerInitializer((context, jettyContainer) -> {
+        jettyContainer.setMaxTextMessageSize(configs.getStompMaxIncomingMessageSize());
+        LOG.info("Configured WebSocket container max text message size: {}", configs.getStompMaxIncomingMessageSize());
+      });
+
       agentroot.addEventListener(new ContextLoaderListener(agentApiContext));
+      agentroot.addEventListener(new WebSocketInitializerListener(initializerForAgentroot));
 
       ServletHolder rootServlet = root.addServlet(DefaultServlet.class, "/");
       rootServlet.setInitParameter("dirAllowed", "false");
@@ -418,9 +435,16 @@ public class AmbariServer {
       // session-per-request strategy for api
       root.addFilter(new FilterHolder(injector.getInstance(AmbariPersistFilter.class)), "/api/*", DISPATCHER_TYPES);
       root.addFilter(new FilterHolder(new MethodOverrideFilter()), "/api/*", DISPATCHER_TYPES);
+      root.addFilter(new FilterHolder(new ContentTypeOverrideFilter()), "/api/*", DISPATCHER_TYPES);
+
+      JettyWebSocketServletContainerInitializer initializerForRoot = new JettyWebSocketServletContainerInitializer((context, jettyContainer) -> {
+        jettyContainer.setMaxTextMessageSize(configs.getStompMaxIncomingMessageSize());
+        LOG.info("Configured WebSocket container max text message size: {}", configs.getStompMaxIncomingMessageSize());
+      });
 
       // register listener to capture request context
       root.addEventListener(new RequestContextListener());
+      root.addEventListener(new WebSocketInitializerListener(initializerForRoot));
       root.addFilter(new FilterHolder(springSecurityFilter), "/api/*", DISPATCHER_TYPES);
       root.addFilter(new FilterHolder(new UserNameOverrideFilter()), "/api/v1/users/*", DISPATCHER_TYPES);
 
@@ -438,17 +462,11 @@ public class AmbariServer {
       serverForAgent.addConnector(agentOneWayConnector);
       serverForAgent.addConnector(agentTwoWayConnector);
 
-      ServletHolder sh = new ServletHolder(ServletContainer.class);
-      sh.setInitParameter("com.sun.jersey.config.property.resourceConfigClass",
-          "com.sun.jersey.api.core.PackagesResourceConfig");
-
-      sh.setInitParameter("com.sun.jersey.config.property.packages",
-        "org.apache.ambari.server.api.rest;" +
-          "org.apache.ambari.server.api.services;" +
-          "org.apache.ambari.eventdb.webservice;" +
-          "org.apache.ambari.server.api");
-
-      sh.setInitParameter("com.sun.jersey.api.json.POJOMappingFeature", "true");
+      ServletHolder sh = new ServletHolder(new ServletContainer(new ResourceConfig().packages(
+              "org.apache.ambari.server.api.rest",
+              "org.apache.ambari.server.api.services",
+              "org.apache.ambari.eventdb.webservice",
+              "org.apache.ambari.server.api").register(org.glassfish.jersey.jackson.JacksonFeature.class)));
       root.addServlet(sh, "/api/v1/*");
       sh.setInitOrder(2);
 
@@ -470,46 +488,47 @@ public class AmbariServer {
 
       enableLog4jMonitor(configsMap);
 
-      GzipHandler gzipHandler = new GzipHandler();
-      gzipHandler.setHandler(root);
-
-      //TODO minimal set, perhaps is needed to add some other mime types
-      gzipHandler.setIncludedMimeTypes("text/html", "text/plain", "text/xml", "text/css", "application/javascript",
+      if (configs.isGzipHandlerEnabledForJetty()) {
+        GzipHandler gzipHandler = new GzipHandler();
+        gzipHandler.setHandler(root);
+        //TODO minimal set, perhaps is needed to add some other mime types
+        gzipHandler.setIncludedMimeTypes("text/html", "text/plain", "text/xml", "text/css", "application/javascript",
           "application/x-javascript", "application/xml", "application/x-www-form-urlencoded", "application/json");
-      handlerList.addHandler(gzipHandler);
+        handlerList.addHandler(gzipHandler);
+      } else {
+        handlerList.addHandler(root);
+      }
 
       server.setHandler(handlerList);
 
-      ServletHolder agent = new ServletHolder(ServletContainer.class);
-      agent.setInitParameter("com.sun.jersey.config.property.resourceConfigClass",
-          "com.sun.jersey.api.core.PackagesResourceConfig");
-      agent.setInitParameter("com.sun.jersey.config.property.packages",
-          "org.apache.ambari.server.agent.rest;" + "org.apache.ambari.server.api");
-      agent.setInitParameter("com.sun.jersey.api.json.POJOMappingFeature", "true");
+      ServletHolder agent = new ServletHolder(new ServletContainer(new ResourceConfig()
+              .packages("org.apache.ambari.server.agent.rest", "org.apache.ambari.server.api")
+              .register(org.glassfish.jersey.jackson.JacksonFeature.class)));
       agentroot.addServlet(agent, "/agent/v1/*");
       agent.setInitOrder(3);
 
-      AgentResource.startHeartBeatHandler();
+      injector.getInstance(HeartBeatHandler.class).start();
       LOG.info("********** Started Heartbeat handler **********");
 
-      ServletHolder cert = new ServletHolder(ServletContainer.class);
-      cert.setInitParameter("com.sun.jersey.config.property.resourceConfigClass",
-          "com.sun.jersey.api.core.PackagesResourceConfig");
-      cert.setInitParameter("com.sun.jersey.config.property.packages",
-          "org.apache.ambari.server.security.unsecured.rest;" + "org.apache.ambari.server.api");
-
-      cert.setInitParameter("com.sun.jersey.api.json.POJOMappingFeature", "true");
+      ServletHolder cert = new ServletHolder(new ServletContainer(new ResourceConfig()
+              .packages("org.apache.ambari.server.security.unsecured.rest", "org.apache.ambari.server.api")
+              .register(org.glassfish.jersey.jackson.JacksonFeature.class)));
       agentroot.addServlet(cert, "/*");
       cert.setInitOrder(4);
 
       File resourcesDirectory = new File(configs.getResourceDirPath());
       ServletHolder resources = new ServletHolder(DefaultServlet.class);
       resources.setInitParameter("resourceBase", resourcesDirectory.getParent());
+      resources.setInitParameter("dirAllowed", "false");
       root.addServlet(resources, "/resources/*");
       resources.setInitOrder(5);
 
+      // Allow symlinked files in Jetty 11
+      Resource baseResource = Resource.newResource(resourcesDirectory.getParentFile().getAbsolutePath());
+      root.addAliasCheck(new SymlinkAllowedResourceAliasChecker(root, baseResource));
+
       if (configs.csrfProtectionEnabled()) {
-        sh.setInitParameter("com.sun.jersey.spi.container.ContainerRequestFilters",
+        sh.setInitParameter("org.glassfish.jersey.server.ContainerRequestFilter",
             "org.apache.ambari.server.api.AmbariCsrfProtectionFilter");
       }
 
@@ -588,6 +607,12 @@ public class AmbariServer {
       LOG.info("********* Started Services **********");
 
       if (!configs.isMetricsServiceDisabled()) {
+        if (MetricsConfiguration.isStompStatMetricsConfigured() && metricsService instanceof MetricsServiceImpl) {
+          WebSocketMessageBrokerStats apiStompStats = apiDispatcherContext.getBean(WebSocketMessageBrokerStats.class);
+          ((MetricsServiceImpl) metricsService).setApiStompStats(apiStompStats);
+          WebSocketMessageBrokerStats agentStompStats = agentDispatcherContext.getBean(WebSocketMessageBrokerStats.class);
+          ((MetricsServiceImpl) metricsService).setAgentStompStats(agentStompStats);
+        }
         metricsService.start();
       } else {
         LOG.info("AmbariServer Metrics disabled.");
@@ -628,15 +653,17 @@ public class AmbariServer {
 
       String srvrCrtPass = configsMap.get(Configuration.SRVR_CRT_PASS.getKey());
 
-
+      SecureRequestCustomizer src = new SecureRequestCustomizer();
+      src.setSniHostCheck(false);
+      src.setSniRequired(false);
       HttpConfiguration https_config = new HttpConfiguration();
-      https_config.addCustomizer(new SecureRequestCustomizer());
+      https_config.addCustomizer(src);
       https_config.setRequestHeaderSize(configs.getHttpRequestHeaderSize());
       https_config.setResponseHeaderSize(configs.getHttpResponseHeaderSize());
       https_config.setSendServerVersion(false);
 
       // Secured connector - default constructor sets trustAll = true for certs
-      SslContextFactory sslContextFactory = new SslContextFactory();
+      SslContextFactory.Server sslContextFactory = new SslContextFactory.Server();
       disableInsecureProtocols(sslContextFactory);
       sslContextFactory.setKeyStorePath(keystore);
       sslContextFactory.setTrustStorePath(truststore);
@@ -646,6 +673,8 @@ public class AmbariServer {
       sslContextFactory.setKeyStoreType(configsMap.get(Configuration.KSTR_TYPE.getKey()));
       sslContextFactory.setTrustStoreType(configsMap.get(Configuration.TSTR_TYPE.getKey()));
       sslContextFactory.setNeedClientAuth(needClientAuth);
+      sslContextFactory.setSniRequired(false);
+
       ServerConnector agentSslConnector = new ServerConnector(server, acceptors, -1,
         new SslConnectionFactory(sslContextFactory, HttpVersion.HTTP_1_1.toString()),
         new HttpConnectionFactory(https_config));
@@ -679,10 +708,13 @@ public class AmbariServer {
       String httpsCrtPass = configsMap.get(Configuration.CLIENT_API_SSL_CRT_PASS.getKey());
 
       HttpConfiguration https_config = new HttpConfiguration(http_config);
-      https_config.addCustomizer(new SecureRequestCustomizer());
+      SecureRequestCustomizer src = new SecureRequestCustomizer();
+      src.setSniRequired(false);
+      src.setSniHostCheck(false);
+      https_config.addCustomizer(src);
       https_config.setSecurePort(configs.getClientSSLApiPort());
 
-      SslContextFactory contextFactoryApi = new SslContextFactory();
+      SslContextFactory.Server contextFactoryApi = new SslContextFactory.Server();
       disableInsecureProtocols(contextFactoryApi);
       contextFactoryApi.setKeyStorePath(httpsKeystore);
       contextFactoryApi.setTrustStorePath(httpsTruststore);
@@ -691,6 +723,7 @@ public class AmbariServer {
       contextFactoryApi.setTrustStorePassword(httpsCrtPass);
       contextFactoryApi.setKeyStoreType(configsMap.get(Configuration.CLIENT_API_SSL_KSTR_TYPE.getKey()));
       contextFactoryApi.setTrustStoreType(configsMap.get(Configuration.CLIENT_API_SSL_KSTR_TYPE.getKey()));
+      contextFactoryApi.setSniRequired(false);
       apiConnector = new ServerConnector(server, acceptors, -1,
         new SslConnectionFactory(contextFactoryApi, HttpVersion.HTTP_1_1.toString()),
         new HttpConnectionFactory(https_config));
@@ -795,9 +828,9 @@ public class AmbariServer {
    * at server properties)
    */
   private void disableInsecureProtocols(SslContextFactory factory) {
-    // by default all protocols should be available
-    factory.setExcludeProtocols();
-    factory.setIncludeProtocols(new String[] {"SSLv2Hello","SSLv3","TLSv1","TLSv1.1","TLSv1.2"});
+    // by default all protocols should be available, excluding TLSv1.0
+    factory.setExcludeProtocols(DEPRECATED_SSL_PROTOCOLS);
+    factory.setIncludeProtocols(new String[] {"SSLv2Hello","SSLv3","TLSv1.1","TLSv1.2"});
 
     if (!configs.getSrvrDisabledCiphers().isEmpty()) {
       String[] masks = configs.getSrvrDisabledCiphers().split(DISABLED_ENTRIES_SPLITTER);
@@ -819,7 +852,11 @@ public class AmbariServer {
     configureHandlerCompression(root);
     configureAdditionalContentTypes(root);
     root.setContextPath(CONTEXT_PATH);
-    root.setErrorHandler(injector.getInstance(AmbariErrorHandler.class));
+
+    AmbariErrorHandler ambariErrorHandler = injector.getInstance(AmbariErrorHandler.class);
+    ambariErrorHandler.setShowStacks(configs.isServerShowErrorStacks());
+    root.setErrorHandler(ambariErrorHandler);
+
     root.setMaxFormContentSize(-1);
 
     /* Configure web app context */
@@ -834,16 +871,17 @@ public class AmbariServer {
    */
   protected void configureHandlerCompression(ServletContextHandler context) {
     if (configs.isApiGzipped()) {
-      FilterHolder gzipFilter = context.addFilter(GzipFilter.class, "/*",
-          EnumSet.of(DispatcherType.REQUEST));
-
-      gzipFilter.setInitParameter("methods", "GET,POST,PUT,DELETE");
-      gzipFilter.setInitParameter("excludePathPatterns", ".*(\\.woff|\\.ttf|\\.woff2|\\.eot|\\.svg)");
-      gzipFilter.setInitParameter("mimeTypes",
-          "text/html,text/plain,text/xml,text/css,application/x-javascript," +
-              "application/xml,application/x-www-form-urlencoded," +
-              "application/javascript,application/json");
-      gzipFilter.setInitParameter("minGzipSize", configs.getApiGzipMinSize());
+      GzipHandler gzipHandler = new GzipHandler();
+      gzipHandler.setIncludedMethods("GET", "POST", "PUT", "DELETE");
+      gzipHandler.setExcludedPaths("*.woff", "*.ttf", "*.woff2", "*.eot", "*.svg");
+      gzipHandler.setIncludedMimeTypes(
+              "text/html", "text/plain", "text/xml", "text/css",
+              "application/x-javascript", "application/xml",
+              "application/x-www-form-urlencoded", "application/javascript",
+              "application/json"
+      );
+      gzipHandler.setMinGzipSize(Integer.parseInt(configs.getApiGzipMinSize()));
+      context.setGzipHandler(gzipHandler);
     }
   }
 
@@ -901,7 +939,6 @@ public class AmbariServer {
    */
   @Deprecated
   public void performStaticInjection() {
-    AgentResource.init(injector.getInstance(HeartBeatHandler.class));
     CertificateDownload.init(injector.getInstance(CertificateManager.class));
     ConnectionInfo.init(injector.getInstance(Configuration.class));
     CertificateSign.init(injector.getInstance(CertificateManager.class));
@@ -910,7 +947,7 @@ public class AmbariServer {
     KeyService.init(injector.getInstance(PersistKeyValueImpl.class));
     BootStrapResource.init(injector.getInstance(BootStrapImpl.class));
     StackAdvisorResourceProvider.init(injector.getInstance(StackAdvisorHelper.class),
-        injector.getInstance(Configuration.class));
+        injector.getInstance(Configuration.class), injector.getInstance(Clusters.class), injector.getInstance(AmbariMetaInfo.class));
     StageUtils.setGson(injector.getInstance(Gson.class));
     StageUtils.setTopologyManager(injector.getInstance(TopologyManager.class));
     StageUtils.setConfiguration(injector.getInstance(Configuration.class));
@@ -939,6 +976,7 @@ public class AmbariServer {
     ClusterPrivilegeResourceProvider.init(injector.getInstance(ClusterDAO.class));
     AmbariPrivilegeResourceProvider.init(injector.getInstance(ClusterDAO.class));
     ActionManager.setTopologyManager(injector.getInstance(TopologyManager.class));
+    KerberosKeytabController.setKerberosHelper(injector.getInstance(KerberosHelper.class));
     StackAdvisorBlueprintProcessor.init(injector.getInstance(StackAdvisorHelper.class));
     ThreadPoolEnabledPropertyProvider.init(injector.getInstance(Configuration.class));
 
@@ -1043,18 +1081,19 @@ public class AmbariServer {
       LOG.info("********* Initializing request access log: " + logfullpath);
       RequestLogHandler requestLogHandler = new RequestLogHandler();
 
-      NCSARequestLog requestLog = new NCSARequestLog(requestlogpath);
+      CustomRequestLog requestLog = new CustomRequestLog(requestlogpath);
+
 
       String retaindays = configsMap.get(Configuration.REQUEST_LOG_RETAINDAYS.getKey());
       int retaindaysInt = Configuration.REQUEST_LOG_RETAINDAYS.getDefaultValue();
       if(retaindays != null && !StringUtils.isBlank(retaindays)) {
         retaindaysInt = Integer.parseInt(retaindays.trim());
       }
-
-      requestLog.setRetainDays(retaindaysInt);
-      requestLog.setAppend(true);
-      requestLog.setLogLatency(true);
-      requestLog.setExtended(true);
+      //todo set this in new CustomRequestLog
+//      requestLog.setRetainDays(retaindaysInt);
+//      requestLog.setAppend(true);
+//      requestLog.setLogLatency(true);
+//      requestLog.setExtended(true);
       requestLogHandler.setRequestLog(requestLog);
       //Add requestloghandler to existing handlerlist.
       handlerList.addHandler(requestLogHandler);
@@ -1081,6 +1120,7 @@ public class AmbariServer {
 
       // check if this instance is the active instance
       Configuration config = injector.getInstance(Configuration.class);
+      config.validatePasswordPolicyRegexp();
       if (!config.isActiveInstance()) {
         String errMsg = "This instance of ambari server is not designated as active. Cannot start ambari server." +
                             "The property active.instance is set to false in ambari.properties";

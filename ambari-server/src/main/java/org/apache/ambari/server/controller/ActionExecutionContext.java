@@ -27,7 +27,7 @@ import org.apache.ambari.server.actionmanager.TargetHostType;
 import org.apache.ambari.server.agent.ExecutionCommand;
 import org.apache.ambari.server.controller.internal.RequestOperationLevel;
 import org.apache.ambari.server.controller.internal.RequestResourceFilter;
-import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
+import org.apache.ambari.server.state.StackId;
 
 /**
  * The context required to create tasks and stages for a custom action
@@ -39,12 +39,12 @@ public class ActionExecutionContext {
   private RequestOperationLevel operationLevel;
   private Map<String, String> parameters;
   private TargetHostType targetType;
-  private Short timeout;
+  private Integer timeout;
   private String expectedServiceName;
   private String expectedComponentName;
   private boolean hostsInMaintenanceModeExcluded = true;
   private boolean allowRetry = false;
-  private RepositoryVersionEntity repositoryVersion;
+  private StackId stackId;
 
   /**
    * If {@code true}, instructs Ambari not to worry about whether or not the
@@ -68,7 +68,7 @@ public class ActionExecutionContext {
   public ActionExecutionContext(String clusterName, String actionName,
       List<RequestResourceFilter> resourceFilters,
       Map<String, String> parameters, TargetHostType targetType,
-      Short timeout, String expectedServiceName,
+      Integer timeout, String expectedServiceName,
       String expectedComponentName) {
 
     this.clusterName = clusterName;
@@ -113,11 +113,11 @@ public class ActionExecutionContext {
     return targetType;
   }
 
-  public Short getTimeout() {
+  public Integer getTimeout() {
     return timeout;
   }
 
-  public void setTimeout(Short timeout) {
+  public void setTimeout(Integer timeout) {
     this.timeout = timeout;
   }
 
@@ -182,30 +182,29 @@ public class ActionExecutionContext {
   }
 
   /**
-   * Gets the stack/version to use for generating stack-associated values for a
+   * Gets the stack to use for generating stack-associated values for a
    * command. In some cases the cluster's stack is not the correct one to use,
    * such as when distributing a repository.
    *
-   * @return the repository for the stack/version to use when generating
+   * @return the stack to use when generating
    *         stack-specific content for the command.
-   *
-   * @return
    */
-  public RepositoryVersionEntity getRepositoryVersion() {
-    return repositoryVersion;
+  public StackId getStackId() {
+    return stackId;
   }
 
   /**
-   * Sets the stack/version to use for generating stack-associated values for a
+   * Sets the stack to use for generating stack-associated values for a
    * command. In some cases the cluster's stack is not the correct one to use,
    * such as when distributing a repository.
    *
    * @param stackId
    *          the stackId to use for stack-based properties on the command.
    */
-  public void setRepositoryVersion(RepositoryVersionEntity repositoryVersion) {
-    this.repositoryVersion = repositoryVersion;
+  public void setStackId(StackId stackId) {
+    this.stackId = stackId;
   }
+
 
   /**
    * Adds a command visitor that will be invoked after a command is created.  Provides access

@@ -20,7 +20,6 @@ package org.apache.ambari.server.serveraction.users;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +34,6 @@ import org.apache.ambari.server.agent.ExecutionCommand;
 import org.apache.ambari.server.hooks.users.UserHookParams;
 import org.apache.ambari.server.state.SecurityType;
 import org.apache.ambari.server.utils.ShellCommandUtil;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.easymock.Capture;
 import org.easymock.EasyMock;
 import org.easymock.EasyMockRule;
@@ -49,6 +47,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Maps;
 
 /**
@@ -166,7 +165,6 @@ public class PostUserCreationHookServerActionTest extends EasyMockSupport {
     EasyMock.expect(executionCommand.getClusterId()).andReturn("1").anyTimes();
     EasyMock.expect(executionCommand.getRoleCommand()).andReturn(RoleCommand.EXECUTE).times(callCnt);
     EasyMock.expect(executionCommand.getClusterName()).andReturn("unit-test-cluster").times(callCnt);
-    EasyMock.expect(executionCommand.getConfigurationTags()).andReturn(Collections.emptyMap()).times(callCnt);
     EasyMock.expect(executionCommand.getRole()).andReturn(Role.AMBARI_SERVER_ACTION.toString()).times(callCnt);
     EasyMock.expect(executionCommand.getServiceName()).andReturn("custom-hook-script").times(callCnt);
     EasyMock.expect(executionCommand.getTaskId()).andReturn(-1l).times(callCnt);

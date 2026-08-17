@@ -37,7 +37,7 @@ import org.apache.ambari.server.state.stack.OsFamily;
 import org.apache.ambari.server.state.stack.RepoUrlInfoCallable;
 import org.apache.ambari.server.state.stack.RepoUrlInfoCallable.RepoUrlInfoResult;
 import org.apache.ambari.server.state.stack.RepoVdfCallable;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -168,7 +168,7 @@ public class StackContext {
     public void execute() {
 
       long currentTime = System.nanoTime();
-      List<Future<Map<StackModule, RepoUrlInfoResult>>> results = new ArrayList<>();
+      List<Future<Map<StackModule, RepoUrlInfoResult>>> results;
 
       // !!! first, load the *_urlinfo.json files and block for completion
       try {

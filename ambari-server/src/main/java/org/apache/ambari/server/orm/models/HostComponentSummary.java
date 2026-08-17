@@ -29,8 +29,8 @@ import org.apache.ambari.server.orm.entities.HostComponentDesiredStateEntity;
 import org.apache.ambari.server.orm.entities.HostComponentStateEntity;
 import org.apache.ambari.server.orm.entities.HostEntity;
 import org.apache.ambari.server.state.State;
-import org.codehaus.jackson.annotate.JsonProperty;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.inject.Inject;
 
 /**
@@ -117,7 +117,7 @@ public class HostComponentSummary {
 
   @Override
   public int hashCode() {
-    int result = 1;
+    int result;
     result = 31 + (serviceName != null ? serviceName.hashCode() : 0);
     result = result + (componentName != null ? componentName.hashCode() : 0);
     result = result + (hostId != null ? hostId.hashCode() : 0);

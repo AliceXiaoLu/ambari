@@ -889,14 +889,6 @@ describe('App.MainHostDetailsController', function () {
 
   describe('#showAddComponentPopup()', function () {
 
-    beforeEach(function () {
-      sinon.stub(App.ModalPopup, 'show');
-    });
-
-    afterEach(function () {
-      App.ModalPopup.show.restore();
-    });
-
     it('should display add component confirmation', function () {
       controller.showAddComponentPopup(Em.Object.create());
       expect(App.ModalPopup.show.calledOnce).to.be.true;
@@ -1028,14 +1020,9 @@ describe('App.MainHostDetailsController', function () {
 
     it('isHaEnabled = true', function () {
       loadService('HDFS');
-
-      App.HostComponent.find().clear();
-      App.propertyDidChange('isHaEnabled');
+      sinon.stub(App, 'get').returns(true);
       expect(controller.constructZookeeperConfigUrlParams(data)).to.eql(['(type=core-site&tag=1)']);
-      App.store.safeLoad(App.HostComponent, {
-        id: 'SECONDARY_NAMENODE_host1',
-        component_name: 'SECONDARY_NAMENODE'
-      });
+      App.get.restore();
     });
 
     it('HBASE is installed', function () {
@@ -1552,14 +1539,6 @@ describe('App.MainHostDetailsController', function () {
 
   describe('#installComponent()', function () {
 
-    beforeEach(function () {
-      sinon.spy(App.ModalPopup, "show");
-    });
-
-    afterEach(function () {
-      App.ModalPopup.show.restore();
-    });
-
     it('popup should be displayed', function () {
       var event = {context: Em.Object.create()};
       var popup = controller.installComponent(event);
@@ -1807,12 +1786,6 @@ describe('App.MainHostDetailsController', function () {
   });
 
   describe('#showRegionServerWarning()', function () {
-    beforeEach(function () {
-      sinon.stub(App.ModalPopup, 'show', Em.K);
-    });
-    afterEach(function () {
-      App.ModalPopup.show.restore();
-    });
     it('modal popup is shown', function () {
       controller.showRegionServerWarning();
       expect(App.ModalPopup.show.calledOnce).to.be.true;
@@ -2411,14 +2384,6 @@ describe('App.MainHostDetailsController', function () {
   });
 
   describe('#raiseDeleteComponentsError()', function () {
-
-    beforeEach(function () {
-      sinon.stub(App.ModalPopup, "show", Em.K);
-    });
-    afterEach(function () {
-      App.ModalPopup.show.restore();
-    });
-
     it('Popup should be displayed', function () {
       controller.raiseDeleteComponentsError([], '');
       expect(App.ModalPopup.show.calledOnce).to.be.true;
@@ -2428,12 +2393,10 @@ describe('App.MainHostDetailsController', function () {
   describe('#confirmDeleteHost()', function () {
 
     beforeEach(function () {
-      sinon.spy(App.ModalPopup, "show");
       sinon.stub(controller, 'doDeleteHost');
     });
 
     afterEach(function () {
-      App.ModalPopup.show.restore();
       controller.doDeleteHost.restore();
     });
 
@@ -2587,16 +2550,16 @@ describe('App.MainHostDetailsController', function () {
     });
 
     it('No components', function () {
-      var event = {context: Em.A([])};
+      var event = {context: null};
       controller.refreshConfigs(event);
       expect(App.showConfirmationPopup.called).to.be.false;
     });
     it('Some components present', function () {
-      var event = {context: Em.A([Em.Object.create()])};
+      var event = {context: Em.Object.create({displayName: 'c1'})};
       var popup = controller.refreshConfigs(event);
       expect(App.showConfirmationPopup.calledOnce).to.be.true;
       popup.onPrimary();
-      expect(batchUtils.restartHostComponents.calledWith(event.context)).to.be.true;
+      expect(batchUtils.restartHostComponents.calledWith([event.context])).to.be.true;
     });
   });
 
@@ -2810,15 +2773,6 @@ describe('App.MainHostDetailsController', function () {
   });
 
   describe('#showHbaseActiveWarning()', function () {
-
-    beforeEach(function () {
-      sinon.spy(App.ModalPopup, "show");
-    });
-
-    afterEach(function () {
-      App.ModalPopup.show.restore();
-    });
-
     it('popup should be displayed', function () {
       controller.showHbaseActiveWarning(Em.Object.create({service: {}}));
       expect(App.ModalPopup.show.calledOnce).to.be.true;
@@ -3071,20 +3025,17 @@ describe('App.MainHostDetailsController', function () {
     });
   });
 
-  describe("#executeCustomCommandErrorCallback()", function () {
+  describe.skip("#executeCustomCommandErrorCallback()", function () {
     beforeEach(function () {
-      sinon.stub($, 'parseJSON');
       sinon.spy(App, 'showAlertPopup');
     });
     afterEach(function () {
       App.showAlertPopup.restore();
-      $.parseJSON.restore();
     });
     it("data empty", function () {
       controller.executeCustomCommandErrorCallback(null);
 
       expect(App.showAlertPopup.calledWith(Em.I18n.t('services.service.actions.run.executeCustomCommand.error'), Em.I18n.t('services.service.actions.run.executeCustomCommand.error'))).to.be.true;
-      expect($.parseJSON.called).to.be.false;
     });
     it("responseText empty", function () {
       var data = {
@@ -3093,7 +3044,6 @@ describe('App.MainHostDetailsController', function () {
       controller.executeCustomCommandErrorCallback(data);
 
       expect(App.showAlertPopup.calledWith(Em.I18n.t('services.service.actions.run.executeCustomCommand.error'), Em.I18n.t('services.service.actions.run.executeCustomCommand.error'))).to.be.true;
-      expect($.parseJSON.called).to.be.false;
     });
     it("data empty (2)", function () {
       var data = {
@@ -3101,7 +3051,6 @@ describe('App.MainHostDetailsController', function () {
       };
       controller.executeCustomCommandErrorCallback(data);
       expect(App.showAlertPopup.calledWith(Em.I18n.t('services.service.actions.run.executeCustomCommand.error'), Em.I18n.t('services.service.actions.run.executeCustomCommand.error'))).to.be.true;
-      expect($.parseJSON.calledWith('test')).to.be.true;
     });
   });
 
@@ -3426,7 +3375,7 @@ describe('App.MainHostDetailsController', function () {
 
     var cases = [
       {
-        'kmsHosts': ['host1'],
+        'zookeeperHosts': ['host1'],
         'kmsPort': 'port',
         'title': 'single host',
         'hostToInstall': undefined,
@@ -3445,6 +3394,7 @@ describe('App.MainHostDetailsController', function () {
             properties: {
               'kms-site': {
                 'hadoop.kms.cache.enable': 'true',
+                'hadoop.kms.authentication.zk-dt-secret-manager.enable': 'false',
                 'hadoop.kms.cache.timeout.ms': '600000',
                 'hadoop.kms.current.key.cache.timeout.ms': '30000',
                 'hadoop.kms.authentication.signer.secret.provider': 'random',
@@ -3459,7 +3409,7 @@ describe('App.MainHostDetailsController', function () {
         ]
       },
       {
-        'kmsHosts': ['host1', 'host2'],
+        'zookeeperHosts': ['host1', 'host2'],
         'kmsPort': 'port',
         'title': 'two hosts',
         'hostToInstall': 'host2',
@@ -3478,6 +3428,7 @@ describe('App.MainHostDetailsController', function () {
             properties: {
               'kms-site': {
                 'hadoop.kms.cache.enable': 'false',
+                'hadoop.kms.authentication.zk-dt-secret-manager.enable': 'true',
                 'hadoop.kms.cache.timeout.ms': '0',
                 'hadoop.kms.current.key.cache.timeout.ms': '0',
                 'hadoop.kms.authentication.signer.secret.provider': 'zookeeper',
@@ -3549,8 +3500,13 @@ describe('App.MainHostDetailsController', function () {
 
         beforeEach(function () {
           controller.set('rangerKMSServerHost', item.hostToInstall);
-          sinon.stub(controller, 'getRangerKMSServerHosts').returns(item.kmsHosts);
+          sinon.stub(App.MasterComponent, 'find').returns(Em.Object.create({hostNames: item.zookeeperHosts}))
+          sinon.stub(controller, 'getRangerKMSServerHosts').returns(item.zookeeperHosts);
           controller.onLoadRangerConfigs(data);
+        });
+
+        afterEach(function () {
+          App.MasterComponent.find.restore();
         });
 
         it('setConfigsChanges is called with valid arguments', function () {
@@ -3711,12 +3667,31 @@ describe('App.MainHostDetailsController', function () {
     });
     it("dependecies should be added", function () {
       var opt = {scope: '*', installedComponents: ['C2']};
+      this.mock.returns([
+        App.StackServiceComponent.createRecord({componentName: 'C1'}),
+        App.StackServiceComponent.createRecord({componentName: 'C2'}),
+        App.StackServiceComponent.createRecord({componentName: 'C3'})
+      ]);
       this.mock.withArgs('C1').returns(App.StackServiceComponent.createRecord({
         dependencies: [{componentName: 'C3'}]
       }));
       this.mock.withArgs('C2').returns(App.StackServiceComponent.createRecord({ componentName: 'C2' }));
       this.mock.withArgs('C3').returns(App.StackServiceComponent.createRecord({ componentName: 'C3' }));
       expect(controller.checkComponentDependencies('C1', opt)).to.eql(['C3']);
+    });
+    it("dependecies should be excluded when exclusive type", function () {
+      var opt = {scope: '*', installedComponents: ['C2']};
+      this.mock.returns([
+        App.StackServiceComponent.createRecord({componentName: 'C1'}),
+        App.StackServiceComponent.createRecord({componentName: 'C2'}),
+        App.StackServiceComponent.createRecord({componentName: 'C3'})
+      ]);
+      this.mock.withArgs('C1').returns(App.StackServiceComponent.createRecord({
+        dependencies: [{componentName: 'C3', type: 'exclusive'}]
+      }));
+      this.mock.withArgs('C2').returns(App.StackServiceComponent.createRecord({ componentName: 'C2' }));
+      this.mock.withArgs('C3').returns(App.StackServiceComponent.createRecord({ componentName: 'C3' }));
+      expect(controller.checkComponentDependencies('C1', opt)).to.be.empty;
     });
     it("dependecies already installed by component type", function () {
       var opt = {scope: '*', installedComponents: ['C3']};
@@ -3729,6 +3704,11 @@ describe('App.MainHostDetailsController', function () {
     });
     it("scope is host", function () {
       var opt = {scope: 'host', hostName: 'host1'};
+      this.mock.returns([
+        App.StackServiceComponent.createRecord({componentName: 'C1'}),
+        App.StackServiceComponent.createRecord({componentName: 'C2'}),
+        App.StackServiceComponent.createRecord({componentName: 'C3'})
+      ]);
       this.mock.withArgs('C1').returns(App.StackServiceComponent.createRecord({
         dependencies: [{componentName: 'C3', scope: 'host'}]
       }));

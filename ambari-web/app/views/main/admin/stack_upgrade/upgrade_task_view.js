@@ -21,17 +21,19 @@ var App = require('app');
 
 App.upgradeTaskView = Em.View.extend({
   templateName: require('templates/main/admin/stack_upgrade/upgrade_task'),
+  classNameBindings: ['isOutputActive:active'],
+  activeTab:"output",
 
   /**
    * view observed directly
-   * @type {boolean}
+   * @type {?Em.View}
    */
-  outsideView: false,
+  outsideView: null,
 
   /**
    * @type {boolean}
    */
-  showContent: Em.computed.or('outsideView', 'content.isExpanded'),
+  isExpanded: false,
 
   /**
    * @type {boolean}
@@ -73,6 +75,66 @@ App.upgradeTaskView = Em.View.extend({
    * @type {string}
    */
   errorTabIdLInk: Em.computed.format('#{0}','errorTabId'),
+
+
+  setOutputActive:function(){
+    this.set('activeTab','output');
+  },
+
+  setErrorActive:function(){
+    this.set('activeTab','error');
+  },
+
+  isOutputActive:function(){
+    return this.get('activeTab')==="output"
+  },
+
+  isErrorActive:function(){
+    return this.get('activeTab')==="error"
+  },
+
+  didInsertElement: function() {
+    if (this.get('outsideView') && this.get('content')) {
+      this.set('isExpanded', true);
+      this.doPolling();
+    }
+  },
+
+  toggleExpanded: function () {
+    var isExpanded = this.get('isExpanded');
+    this.toggleProperty('isExpanded', !isExpanded);
+    if (!isExpanded) {
+      this.doPolling();
+    } else {
+      this.set('content.isContentLoaded', true);
+    }
+  },
+
+  /**
+   *
+   */
+  doPolling: function () {
+    var self = this;
+    var task = this.get('content');
+    var isExpanded = this.get('outsideView') ? this.get('outsideView.isDetailsOpened') : this.get('isExpanded');
+
+    if (task && isExpanded) {
+      this.get('controller').getUpgradeTask(task).then(function () {
+        task.set('isContentLoaded', true);
+        if (!task.get('isCompleted')) {
+          self.set('timer', setTimeout(function () {
+            self.doPolling(task);
+          }, App.bgOperationsUpdateInterval));
+        }
+      });
+    } else {
+      clearTimeout(this.get('timer'));
+    }
+  }.observes('outsideView.isDetailsOpened'),
+
+  willDestroyElement: function () {
+    clearTimeout(this.get('timer'));
+  },
 
   /**
    * open error log in textarea to give ability to cope content

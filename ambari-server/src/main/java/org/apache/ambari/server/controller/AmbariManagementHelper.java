@@ -22,7 +22,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import javax.persistence.RollbackException;
+import jakarta.persistence.RollbackException;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.orm.dao.ExtensionDAO;
@@ -76,7 +76,6 @@ public class AmbariManagementHelper {
 
     try {
       linkDAO.create(linkEntity);
-      linkEntity = linkDAO.merge(linkEntity);
     } catch (RollbackException e) {
       String message = "Unable to create extension link";
       LOG.debug(message, e);

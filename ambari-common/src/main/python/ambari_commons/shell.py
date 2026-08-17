@@ -1,5 +1,4 @@
-# !/usr/bin/env python
-
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -22,7 +21,7 @@ import logging
 import os
 import string
 import signal
-from ambari_commons import subprocess32 as subprocess
+import subprocess as subprocess
 import threading
 from contextlib import contextmanager
 import copy
@@ -43,7 +42,9 @@ PIPE_PTY = -3  # Popen stdout-only mode implemented via PopenEx
 # default timeout for async invoked processes
 __TIMEOUT_SECONDS = 300
 
-__PACKAGE_MANAGER_LOCK_ACQUIRED_MSG = "Cannot obtain lock for Package manager. Retrying after {0} seconds. Reason: {1}"
+__PACKAGE_MANAGER_LOCK_ACQUIRED_MSG = (
+  "Cannot obtain lock for Package manager. Retrying after {0} seconds. Reason: {1}"
+)
 __PACKAGE_MANAGER_REPO_ERROR_MSG = "Cannot download the package due to repository unavailability. Retrying after {0} seconds. Reason: {1}"
 
 
@@ -104,10 +105,21 @@ class RepoCallContext(object):
   use_repos = None
   skip_repos = None
   is_upgrade = False
+  action_force = False  # currently only for install action
 
-  def __init__(self, ignore_errors=True, retry_count=2, retry_sleep=30, retry_on_repo_unavailability=False,
-               retry_on_locked=True, log_output=True, use_repos=None, skip_repos=None,
-               is_upgrade=False):
+  def __init__(
+    self,
+    ignore_errors=True,
+    retry_count=2,
+    retry_sleep=30,
+    retry_on_repo_unavailability=False,
+    retry_on_locked=True,
+    log_output=True,
+    use_repos=None,
+    skip_repos=None,
+    is_upgrade=False,
+    action_force=False,
+  ):
     """
     :type ignore_errors bool
     :type retry_count int
@@ -128,6 +140,7 @@ class RepoCallContext(object):
     self.use_repos = use_repos
     self.skip_repos = skip_repos
     self.is_upgrade = is_upgrade
+    self.action_force = action_force
 
   @property
   def retry_count(self):
@@ -149,6 +162,7 @@ def __set_winsize(fd, row, col):
   import termios
   import struct
   import fcntl
+
   winsize = struct.pack("HHHH", row, col, 0, 0)
   fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
@@ -163,15 +177,16 @@ def __terminal_width(fd=1):
   import termios
   import struct
   import fcntl
+
   try:
-    buf = 'abcdefgh'
+    buf = "abcdefgh"
     buf = fcntl.ioctl(fd, termios.TIOCGWINSZ, buf)
-    ret = struct.unpack('hhhh', buf)[1]
+    ret = struct.unpack("hhhh", buf)[1]
     if ret == 0:
       return 80
     # Add minimum too?
     return ret
-  except:   # IOError
+  except:  # IOError
     return 80
 
 
@@ -180,7 +195,7 @@ class PopenEx(subprocess.Popen):
   Same nice Popen with stdout handles hack to allow pty instead of pipe. This will allow to control terminal geometry
   to eliminate some applications bugs with output formatting according to terminal width.
 
-  TODO: move the code directly to subprocess32.py
+  TODO: move the code directly to subprocess.py
   """
 
   def _get_handles(self, stdin, stdout, stderr):
@@ -195,7 +210,7 @@ class PopenEx(subprocess.Popen):
 
     if is_extended_pipe:
       fd_read, fd_write = pty.openpty()
-      tty.setraw(fd_read)   # do not interpret control characters
+      tty.setraw(fd_read)  # do not interpret control characters
       tty.setraw(fd_write)  # do not interpret control characters
       stdout = fd_write
 
@@ -227,10 +242,12 @@ def quote_bash_args(command):
   if not command:
     return "''"
 
-  if not isinstance(command, basestring):
-    raise ValueError("Command should be a list of strings, found '{0}' in command list elements".format(str(command)))
+  if not isinstance(command, str):
+    raise ValueError(
+      f"Command should be a list of strings, found '{str(command)}' in command list elements"
+    )
 
-  valid = set(string.ascii_letters + string.digits + '@%_-+=:,./')
+  valid = set(string.ascii_letters + string.digits + "@%_-+=:,./")
   for char in command:
     if char not in valid:
       return "'" + command.replace("'", "'\"'\"'") + "'"
@@ -242,9 +259,9 @@ def string_cmd_from_args_list(command, auto_escape=True):
   Copied from resource_manager shell module to remove dependency between modules
   """
   if auto_escape:
-    return ' '.join(quote_bash_args(x) for x in command)
+    return " ".join(quote_bash_args(x) for x in command)
   else:
-    return ' '.join(command)
+    return " ".join(command)
 
 
 def is_under_root():
@@ -267,29 +284,34 @@ def launch_subprocess(command, term_geometry=(42, 255), env=None):
   :type env dict
   :rtype PopenEx
   """
+
   def _geometry_helper():
     """
     Setting proper terminal geometry
     """
-    if term_geometry:
-      __set_winsize(sys.stdout.fileno(), *term_geometry)
     # check term geometry
     # print "terminal_width: ", __terminal_width()
 
   # no way to execute shell command with bash pipes under sudo, it is fully dev responsibility
   if not is_under_root() and not isinstance(command, str):
-    command = "{0} -H -E {1}".format(AMBARI_SUDO_BINARY, string_cmd_from_args_list(command))  # core.shell.as_sudo
+    command = f"{AMBARI_SUDO_BINARY} -H -E {string_cmd_from_args_list(command)}"  # core.shell.as_sudo
   elif not is_under_root() and isinstance(command, str):
-    _logger.debug("Warning, command  \"{0}\" doesn't support sudo appending".format(command))
-
+    _logger.debug(f'Warning, command  "{command}" doesn\'t support sudo appending')
   is_shell = not isinstance(command, (list, tuple))
   environ = copy.deepcopy(os.environ)
-
   if env:
     environ.update(env)
 
-  return PopenEx(command, stdout=PIPE_PTY, stderr=subprocess.PIPE,
-                 shell=is_shell, preexec_fn=_geometry_helper, close_fds=True, env=environ)
+  return PopenEx(
+    command,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    shell=is_shell,
+    preexec_fn=_geometry_helper,
+    close_fds=True,
+    env=environ,
+    universal_newlines=True,
+  )
 
 
 def chunks_reader(cmd, kill_timer):
@@ -302,6 +324,7 @@ def chunks_reader(cmd, kill_timer):
   :type kill_timer threading.Timer
   """
   import select
+
   str_buffer = ""
   read_queue = [cmd.stdout]
   chunk_size = 1024
@@ -327,7 +350,7 @@ def chunks_reader(cmd, kill_timer):
 
     if not data_chunk:
       break
-    str_buffer += data_chunk
+    str_buffer += data_chunk.decode()
 
     if os.linesep in str_buffer:
       copy_offset = str_buffer.rindex(os.linesep)
@@ -419,7 +442,9 @@ def __watchdog_func(event, cmd, exec_timeout):
     kill_process_with_children(cmd.pid)
 
 
-def subprocess_executor(command, timeout=__TIMEOUT_SECONDS, strategy=ReaderStrategy.BufferedQueue, env=None):
+def subprocess_executor(
+  command, timeout=__TIMEOUT_SECONDS, strategy=ReaderStrategy.BufferedQueue, env=None
+):
   """
   Run command with limited time for execution, after timeout command would be killed
 
@@ -439,18 +464,25 @@ def subprocess_executor(command, timeout=__TIMEOUT_SECONDS, strategy=ReaderStrat
   r = SubprocessCallResult()
 
   def _error_handler(_command, _error_log, _exit_code):
-    r.error = os.linesep.join(_error_log)
+    r.error = os.linesep.join([errlog for errlog in _error_log])
     r.code = _exit_code
 
   with process_executor(command, timeout, _error_handler, strategy, env=env) as output:
-    lines = [line for line in output]
+    lines = [line.decode() if isinstance(line, bytes) else line for line in output]
 
   r.out = os.linesep.join(lines)
   return r
 
 
 @contextmanager
-def process_executor(command, timeout=__TIMEOUT_SECONDS, error_callback=None, strategy=ReaderStrategy.BufferedQueue, env=None):
+def process_executor(
+  command,
+  timeout=__TIMEOUT_SECONDS,
+  error_callback=None,
+  strategy=ReaderStrategy.BufferedQueue,
+  env=None,
+  silent=False,
+):
   """
   Context manager for command execution
 
@@ -458,12 +490,14 @@ def process_executor(command, timeout=__TIMEOUT_SECONDS, error_callback=None, st
   :param timeout execution time limit in seconds. If None will default to TIMEOUT_SECONDS, -1 disable feature
   :param strategy the way how to process output. Available methods listed in ReaderStrategy
   :param env Environment variable for new spawned process
+  :param silent no error logging if command execution failed, do not affect `error_callback` param
 
   :type command list|str
   :type timeout None|int
   :type error_callback func
   :type strategy int
   :type env dict
+  :type silent bool
 
   :rtype stdout collections.Iterable
 
@@ -487,6 +521,7 @@ def process_executor(command, timeout=__TIMEOUT_SECONDS, error_callback=None, st
 
   buff_queue = None
   kill_timer = None
+  kill_timer_started = False
 
   try:
     cmd = launch_subprocess(command, env=env)
@@ -494,8 +529,10 @@ def process_executor(command, timeout=__TIMEOUT_SECONDS, error_callback=None, st
       yield []
       return
     kill_timer = threading.Timer(timeout, lambda: cmd.kill())
+    kill_timer.daemon = True
     if timeout > -1:
       kill_timer.start()
+      kill_timer_started = True
 
     if strategy == ReaderStrategy.BufferedQueue:
       buff_queue = BufferedQueue()
@@ -503,7 +540,7 @@ def process_executor(command, timeout=__TIMEOUT_SECONDS, error_callback=None, st
     elif strategy == ReaderStrategy.BufferedChunks:
       yield chunks_reader(cmd, kill_timer)
     else:
-      raise TypeError("Unknown reader strategy selected: {0}".format(strategy))
+      raise TypeError(f"Unknown reader strategy selected: {strategy}")
 
     _exit_code = cmd.poll()
     if _exit_code is None:
@@ -512,9 +549,8 @@ def process_executor(command, timeout=__TIMEOUT_SECONDS, error_callback=None, st
     if error_callback and cmd.returncode and cmd.returncode > 0:
       error_callback(command, cmd.stderr.readlines(), cmd.returncode)
   except Exception as e:
-    if kill_timer:
-      kill_timer.cancel()
-    _logger.error("Exception during command '{0}' execution: {1}".format(command, str(e)))
+    if not silent:
+      _logger.error(f"Exception during command '{command}' execution: {str(e)}")
     if error_callback:
       error_callback(command, [str(e)], -1)
 
@@ -522,6 +558,9 @@ def process_executor(command, timeout=__TIMEOUT_SECONDS, error_callback=None, st
   finally:
     if buff_queue:
       buff_queue.notify_end()
+    if kill_timer and kill_timer_started:
+      kill_timer.cancel()
+      kill_timer.join()
 
 
 def get_all_children(base_pid):
@@ -583,7 +622,9 @@ def get_existing_pids(pids):
   existing_pid_list = []
 
   try:
-    all_existing_pid_list = [int(item) for item in os.listdir("/proc") if item.isdigit()]
+    all_existing_pid_list = [
+      int(item) for item in os.listdir("/proc") if item.isdigit()
+    ]
   except (OSError, IOError):
     _logger.debug("Failed to check PIDs existence")
     return existing_pid_list
@@ -637,12 +678,13 @@ def kill_process_with_children(base_pid):
   from resource_management.core import sudo
 
   exception_list = ["apt-get", "apt", "yum", "zypper", "zypp"]
-  signals_to_post = {
-    "SIGTERM": signal.SIGTERM,
-    "SIGKILL": signal.SIGKILL
-  }
+  signals_to_post = {"SIGTERM": signal.SIGTERM.value, "SIGKILL": signal.SIGKILL.value}
   full_child_pids = get_all_children(base_pid)
-  all_child_pids = [item[0] for item in full_child_pids if item[1].lower() not in exception_list and item[0] != os.getpid()]
+  all_child_pids = [
+    item[0]
+    for item in full_child_pids
+    if item[1].lower() not in exception_list and item[0] != os.getpid()
+  ]
   error_log = []
 
   for sig_name, sig in signals_to_post.items():
@@ -658,19 +700,25 @@ def kill_process_with_children(base_pid):
       wait_for_process_list_kill(pids_to_kill)
       still_existing_pids = get_existing_pids(pids_to_kill)
       if still_existing_pids:
-        _logger.warning("These PIDs {0} did not respond to {1} signal. Detailed commands list:\n {2}".format(
-          ", ".join([str(i) for i in still_existing_pids]),
-          sig_name,
-          "\n".join([i[2] for i in full_child_pids if i[0] in still_existing_pids])
-        ))
+        _logger.warning(
+          f'These PIDs {", ".join([str(i) for i in still_existing_pids])} '
+          f'did not respond to {sig_name} signal. Detailed commands list:\n '
+          + "\n".join([i[2] for i in full_child_pids if i[0] in still_existing_pids])
+        )
 
-  if get_existing_pids(all_child_pids) and error_log:  # we're unable to kill all requested PIDs
-    _logger.warn("Process termination error log:\n")
+  if (
+    get_existing_pids(all_child_pids) and error_log
+  ):  # we're unable to kill all requested PIDs
+    _logger.warning("Process termination error log:\n")
     for error_item in error_log:
-      _logger.warn("PID: {0}, Process: {1}, Exception message: {2}".format(*error_item))
+      _logger.warning(
+        f"PID: {error_item[0]}, Process: {error_item[1]}, Exception message: {error_item[2]}"
+      )
 
 
-def __handle_retries(cmd, repo_properties, context, call_result, is_first_time, is_last_time):
+def __handle_retries(
+  cmd, repo_properties, context, call_result, is_first_time, is_last_time
+):
   """
   :type cmd list
   :type repo_properties ambari_commons.repo_manager.generic_manager.GenericManagerProperties
@@ -681,17 +729,32 @@ def __handle_retries(cmd, repo_properties, context, call_result, is_first_time, 
   """
   out = call_result.all_out
   # handle first failure in a special way (update repo metadata after it, so next try has a better chance to succeed)
-  if is_first_time and call_result.code and repo_properties.locked_output and repo_properties.locked_output not in out:
-    __update_repo_metadata_after_bad_try(cmd, context, repo_properties, call_result.code, call_result.out)
+  if (
+    is_first_time
+    and call_result.code
+    and repo_properties.locked_output
+    and repo_properties.locked_output not in out
+  ):
+    __update_repo_metadata_after_bad_try(
+      cmd, context, repo_properties, call_result.code, call_result.out
+    )
     return False
 
   err_log_msg = None
-  if context.retry_on_locked and repo_properties.locked_output and repo_properties.locked_output in out:
-    err_log_msg = __PACKAGE_MANAGER_LOCK_ACQUIRED_MSG.format(context.retry_sleep, call_result.out)
+  if (
+    context.retry_on_locked
+    and repo_properties.locked_output
+    and repo_properties.locked_output in out
+  ):
+    err_log_msg = (
+      f"{ __PACKAGE_MANAGER_LOCK_ACQUIRED_MSG} {context.retry_sleep} {call_result.out}"
+    )
   elif context.retry_on_repo_unavailability and repo_properties.repo_error:
     for err in repo_properties.repo_error:
       if err in call_result.all_out:
-        err_log_msg = __PACKAGE_MANAGER_REPO_ERROR_MSG.format(context.retry_sleep, call_result.out)
+        err_log_msg = __PACKAGE_MANAGER_REPO_ERROR_MSG.format(
+          context.retry_sleep, call_result.out
+        )
 
   if err_log_msg and not is_last_time:
     _logger.info(err_log_msg)
@@ -708,17 +771,25 @@ def __update_repo_metadata_after_bad_try(cmd, context, repo_properties, code, ou
   :type out str
   """
   repo_update_cmd = repo_properties.repo_update_cmd
-  _logger.info("Execution of '%s' failed and returned %d. %s" % (string_cmd_from_args_list(cmd), code, out))
+  _logger.info(
+    "Execution of '%s' failed and returned %d. %s"
+    % (string_cmd_from_args_list(cmd), code, out)
+  )
 
   call_result = subprocess_executor(repo_update_cmd, timeout=-1)
 
   if call_result.code:
-    _logger.info("Execution of '%s' returned %d. %s" % (repo_update_cmd, call_result.code, call_result.out))
+    _logger.info(
+      "Execution of '%s' returned %d. %s"
+      % (repo_update_cmd, call_result.code, call_result.out)
+    )
 
   _logger.info("Retrying to execute command after %d seconds" % context.retry_sleep)
 
 
-def repository_manager_executor(cmd, repo_properties, context=RepoCallContext(), env=None):
+def repository_manager_executor(
+  cmd, repo_properties, context=RepoCallContext(), env=None
+):
   """
   Repository Manager execution call for install, remove, update commands with possibility to retry calls
 
@@ -732,16 +803,19 @@ def repository_manager_executor(cmd, repo_properties, context=RepoCallContext(),
   call_result = None
 
   for i in range(context.retry_count):
-    is_first_time = (i == 0)
-    is_last_time = (i == context.retry_count - 1)
+    is_first_time = i == 0
+    is_last_time = i == context.retry_count - 1
 
     call_result = subprocess_executor(cmd, timeout=-1, env=env)
 
-    should_stop_retries = __handle_retries(cmd, repo_properties, context, call_result, is_first_time, is_last_time)
+    should_stop_retries = __handle_retries(
+      cmd, repo_properties, context, call_result, is_first_time, is_last_time
+    )
     if (is_last_time or should_stop_retries) and call_result.code != 0:
-      message = "Failed to execute command '{0}', exited with code '{1}', message: '{2}'".format(
-        cmd if not isinstance(cmd, (list, tuple)) else " ".join(cmd),
-        call_result.code, call_result.error)
+      message = (
+        f"Failed to execute command '{cmd if not isinstance(cmd, (list, tuple)) else ' '.join(cmd)}', "
+        f"exited with code '{call_result.code}', message: '{call_result.error}'"
+      )
 
       if context.ignore_errors:
         _logger.warning(message)
@@ -768,13 +842,19 @@ class shellRunnerWindows(shellRunner):
   # Run any command
   def run(self, script, user=None):
     global _logger
-    _logger.warn("user argument ignored on windows")
+    _logger.warning("user argument ignored on windows")
     code = 0
     if isinstance(script, list):
       cmd = " ".join(script)
     else:
       cmd = script
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+    p = subprocess.Popen(
+      cmd,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+      shell=False,
+      universal_newlines=True,
+    )
     out, err = p.communicate()
     code = p.wait()
     _logger.debug("Exitcode for %s is %d" % (cmd, code))
@@ -782,19 +862,27 @@ class shellRunnerWindows(shellRunner):
 
   def runPowershell(self, f=None, script_block=None, args=set()):
     global _logger
-    _logger.warn("user argument ignored on windows")
+    _logger.warning("user argument ignored on windows")
 
     cmd = None
     if f:
-      cmd = ['powershell', '-WindowStyle', 'Hidden', '-File', f] + list(args)
+      cmd = ["powershell", "-WindowStyle", "Hidden", "-File", f] + list(args)
     elif script_block:
-      cmd = ['powershell', '-WindowStyle', 'Hidden', '-Command', script_block] + list(args)
+      cmd = ["powershell", "-WindowStyle", "Hidden", "-Command", script_block] + list(
+        args
+      )
 
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+    p = subprocess.Popen(
+      cmd,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+      shell=False,
+      universal_newlines=True,
+    )
     out, err = p.communicate()
     code = p.wait()
     _logger.debug("Exitcode for %s is %d" % (cmd, code))
-    return {'exitCode': code, 'output': out, 'error': err}
+    return {"exitCode": code, "output": out, "error": err}
 
 
 @OsFamilyImpl(os_family=OsFamilyImpl.DEFAULT)
@@ -805,8 +893,8 @@ class shellRunnerLinux(shellRunner):
     try:
       if self._threadLocal is not None:
         os.setuid(self._threadLocal.uid)
-    except Exception:
-      _logger.warn("can not switch user for running command.")
+    except Exception as e:
+      _logger.warning(f"Unable to switch user for running command. Error details: {e}")
 
   # Run any command
   def run(self, script, user=None):
@@ -817,9 +905,10 @@ class shellRunnerLinux(shellRunner):
         user = pwd.getpwnam(user)[2]
       else:
         user = os.getuid()
-      self._threadLocal.uid = user
-    except Exception:
-      _logger.warn("can not switch user for RUN_COMMAND.")
+      if self._threadLocal is not None:
+        self._threadLocal.uid = user
+    except Exception as e:
+      _logger.warning(f"Unable to switch user for RUN_COMMAND. Error details: {e}")
 
     cmd = script
 
@@ -827,9 +916,16 @@ class shellRunnerLinux(shellRunner):
       cmd = " ".join(script)
 
     cmd_list = ["/bin/bash", "--login", "--noprofile", "-c", cmd]
-    p = subprocess.Popen(cmd_list, preexec_fn=self._change_uid, stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE, shell=False, close_fds=True)
+    p = subprocess.Popen(
+      cmd_list,
+      preexec_fn=self._change_uid,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+      shell=False,
+      close_fds=True,
+      universal_newlines=True,
+    )
     out, err = p.communicate()
     code = p.wait()
     _logger.debug("Exitcode for %s is %d" % (cmd, code))
-    return {'exitCode': code, 'output': out, 'error': err}
+    return {"exitCode": code, "output": out, "error": err}

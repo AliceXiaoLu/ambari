@@ -77,7 +77,7 @@ App.stackServiceMapper = App.QuickDataMapper.create({
 
   mapStackServices: function(json) {
     App.set('isStackServicesLoaded',false);
-    this.clearStackModels();
+    App.clearModels([this.get('model'), this.get('component_model')]);
     App.resetDsStoreTypeMap(App.StackServiceComponent);
     App.resetDsStoreTypeMap(App.StackService);
     this.map(json);
@@ -101,7 +101,7 @@ App.stackServiceMapper = App.QuickDataMapper.create({
       var serviceComponents = [];
       item.components.forEach(function (serviceComponent) {
         var dependencies = serviceComponent.dependencies.map(function (dependecy) {
-          return { Dependencies: App.keysUnderscoreToCamelCase(App.permit(dependecy.Dependencies, ['component_name', 'scope', 'service_name'])) };
+          return { Dependencies: App.keysUnderscoreToCamelCase(App.permit(dependecy.Dependencies, ['component_name', 'scope', 'service_name', 'type'])) };
         });
         serviceComponent.StackServiceComponents.id = serviceComponent.StackServiceComponents.component_name;
         serviceComponent.StackServiceComponents.dependencies = dependencies;
@@ -120,9 +120,6 @@ App.stackServiceMapper = App.QuickDataMapper.create({
         stackService.is_installable = false;
         stackService.is_selected = false;
       }
-      if (stackService.service_type === 'HCFS' && stackService.service_name !== 'HDFS') {
-        stackService.is_selected = false;
-      }
       if(stackService.selection === "MANDATORY") {
         stackService.is_mandatory = true;
       }
@@ -130,22 +127,7 @@ App.stackServiceMapper = App.QuickDataMapper.create({
     }, this);
     App.store.safeLoadMany(this.get('component_model'), stackServiceComponents);
     App.store.safeLoadMany(model, result);
-  },
-
-  /**
-   * Clean store from already loaded data.
-   **/
-  clearStackModels: function () {
-    var models = [App.StackServiceComponent, App.StackService];
-    models.forEach(function (model) {
-      var records = App.get('store').findAll(model).filterProperty('id');
-      records.forEach(function (rec) {
-        Ember.run(this, function () {
-          rec.deleteRecord();
-          App.store.fastCommit();
-        });
-      }, this);
-    }, this);
   }
+
 });
 

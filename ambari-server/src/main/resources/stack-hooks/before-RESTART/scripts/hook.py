@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -17,13 +18,13 @@ limitations under the License.
 
 """
 
-from resource_management import *
+from resource_management import Hook
+
 
 class BeforeRestartHook(Hook):
-
   def hook(self, env):
-    self.run_custom_hook('before-START')
+    self.run_custom_hook("before-START")
+
 
 if __name__ == "__main__":
   BeforeRestartHook().execute()
-

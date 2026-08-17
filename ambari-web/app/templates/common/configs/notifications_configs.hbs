@@ -26,7 +26,7 @@
 
   <div class="panel-body collapse in" {{bindAttr style="view.isCategoryBodyVisible"}}>
     <div class="service-config-section">
-      <form class="form-horizontal" autocomplete="off">
+      <form autocomplete="off" class="form-horizontal">
 
         <div class="entry-row row">
           {{view App.RadioButtonView name="createNotification"
@@ -61,7 +61,7 @@
                         {{#if config.isRemovable}}
                             {{#isAuthorized "SERVICE.MODIFY_CONFIGS"}}
                                 {{#unless config.isComparison}}
-                                  <a class="btn-sm" href="#" data-toggle="tooltip"
+                                  <a class="btn-sm" href="#" data-bs-toggle="tooltip"
                                       {{action "removeProperty" config target="view"}}
                                       {{translateAttr data-original-title="common.remove"}}>
                                     <i class="icon-minus-sign"></i>

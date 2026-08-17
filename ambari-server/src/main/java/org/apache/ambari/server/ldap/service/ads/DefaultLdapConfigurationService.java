@@ -18,8 +18,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 import org.apache.ambari.server.ldap.domain.AmbariLdapConfiguration;
 import org.apache.ambari.server.ldap.service.AmbariLdapException;
@@ -37,8 +37,6 @@ import org.apache.directory.ldap.client.template.EntryMapper;
 import org.apache.directory.ldap.client.template.LdapConnectionTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.common.collect.Lists;
 
 /**
  * Implementation of the validation logic using the Apache Directory API.
@@ -131,7 +129,7 @@ public class DefaultLdapConfigurationService implements LdapConfigurationService
    */
   @Override
   public Set<String> checkGroupAttributes(String userDn, AmbariLdapConfiguration ambariLdapConfiguration) throws AmbariLdapException {
-    List<String> groups = Lists.newArrayList();
+    List<String> groups;
     try {
       LOGGER.info("Checking group attributes for user dn: [{}] ...", userDn);
 
@@ -181,7 +179,7 @@ public class DefaultLdapConfigurationService implements LdapConfigurationService
     EntryMapper<String> entryMapper = new EntryMapper<String>() {
       @Override
       public String map(Entry entry) throws LdapException {
-        return entry.get(ambariLdapConfiguration.groupNameAttribute()).get().getString();
+        return entry.get(ambariLdapConfiguration.groupNameAttribute()).get().getValue();
       }
     };
 

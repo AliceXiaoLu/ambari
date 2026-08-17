@@ -57,14 +57,14 @@
                     {{#if view.isDetailsOpened}}
                       <div class="pull-right col-md-6">
                         <a href="#collapseBox" class="pull-right" {{action toggleDetails target="view"}}
-                           data-toggle="collapse">
+                           data-bs-toggle="collapse">
                             {{t admin.stackUpgrade.dialog.details.hide}}
                         </a>
                       </div>
                     {{else}}
                       <div class="pull-right col-md-6">
                         <a href="#collapseBox" class="pull-right" {{action toggleDetails target="view"}}
-                           data-toggle="collapse">
+                           data-bs-toggle="collapse">
                             {{t admin.stackUpgrade.dialog.details.open}}
                         </a>
                       </div>
@@ -74,7 +74,7 @@
                   <div class="panel-body">
                       {{#if view.runningItem.isTasksLoaded}}
                         <div class="clear col-md-12">
-                            {{view App.upgradeTaskView contentBinding="view.taskDetails" outsideViewBinding="view.outsideView"}}
+                            {{view App.upgradeTaskView contentBinding="view.taskDetails" outsideViewBinding="view"}}
                         </div>
                       {{else}}
                           {{view App.SpinnerView classNames="clear"}}
@@ -93,14 +93,14 @@
                         {{#if view.isDetailsOpened}}
                           <div class="pull-right col-md-6">
                             <a href="#collapseBox" class="pull-right" {{action toggleDetails target="view"}}
-                               data-toggle="collapse">
+                               data-bs-toggle="collapse">
                                 {{t admin.stackUpgrade.dialog.details.hide}}
                             </a>
                           </div>
                         {{else}}
                           <div class="pull-right col-md-6">
                             <a href="#collapseBox" class="pull-right" {{action toggleDetails target="view"}}
-                               data-toggle="collapse">
+                               data-bs-toggle="collapse">
                                 {{t admin.stackUpgrade.dialog.details.open}}
                             </a>
                           </div>
@@ -110,7 +110,7 @@
                       <div class="panel-body">
                           {{#if view.failedItem.isTasksLoaded}}
                             <div class="clear col-md-12">
-                                {{view App.upgradeTaskView contentBinding="view.taskDetails" outsideViewBinding="view.outsideView"}}
+                                {{view App.upgradeTaskView contentBinding="view.taskDetails" outsideViewBinding="view"}}
                             </div>
                           {{else}}
                               {{view App.SpinnerView classNames="clear"}}

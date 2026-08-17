@@ -35,7 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.persistence.EntityManager;
+import jakarta.persistence.EntityManager;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.Role;
@@ -453,8 +453,7 @@ public class OrmTestHelper {
 
     String serviceName = "HDFS";
     Service service = serviceFactory.createNew(cluster, serviceName, repositoryVersion);
-    service = cluster.getService(serviceName);
-    assertNotNull(service);
+    assertNotNull(cluster.getService(serviceName));
 
     ServiceComponent datanode = componentFactory.createNew(service, "DATANODE");
 
@@ -487,8 +486,7 @@ public class OrmTestHelper {
 
     String serviceName = "YARN";
     Service service = serviceFactory.createNew(cluster, serviceName, repositoryVersion);
-    service = cluster.getService(serviceName);
-    assertNotNull(service);
+    assertNotNull(cluster.getService(serviceName));
 
     ServiceComponent resourceManager = componentFactory.createNew(service,
         "RESOURCEMANAGER");

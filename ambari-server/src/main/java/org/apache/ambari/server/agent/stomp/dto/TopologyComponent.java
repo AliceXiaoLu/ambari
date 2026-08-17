@@ -24,8 +24,8 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import org.apache.ambari.server.state.State;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang.StringUtils;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -75,12 +75,8 @@ public class TopologyComponent {
       return this;
     }
 
-    public Builder setHostIds(Set<Long> hostIds) {
+    public Builder setHostIdentifiers(Set<Long> hostIds, Set<String> hostNames) {
       TopologyComponent.this.setHostIds(hostIds);
-      return this;
-    }
-
-    public Builder setHostNames(Set<String> hostNames) {
       TopologyComponent.this.setHostNames(hostNames);
       return this;
     }
@@ -187,10 +183,9 @@ public class TopologyComponent {
     return TopologyComponent.newBuilder().setComponentName(getComponentName())
         .setDisplayName(getDisplayName())
         .setServiceName(getServiceName())
-        .setVersion(getVersion())
         .setComponentLevelParams(getComponentLevelParams() == null ? null : new TreeMap<>(getComponentLevelParams()))
-        .setHostIds(getHostIds() == null ? null : new HashSet<>(getHostIds()))
-        .setHostNames(getHostNames() == null ? null : new HashSet<>(getHostNames()))
+        .setHostIdentifiers(getHostIds() == null ? null : new HashSet<>(getHostIds()),
+            getHostNames() == null ? null : new HashSet<>(getHostNames()))
         .setPublicHostNames(getPublicHostNames() == null ? null : new HashSet<>(getPublicHostNames()))
         .setCommandParams(getCommandParams() == null ? null : new TreeMap<>(getCommandParams()))
         .build();

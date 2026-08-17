@@ -19,12 +19,14 @@ package org.apache.ambari.server.security.authentication;
 
 import java.io.IOException;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.ambari.server.security.AmbariEntryPoint;
+import org.apache.ambari.server.utils.RequestUtils;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
@@ -63,7 +65,7 @@ public class AmbariBasicAuthenticationFilter extends BasicAuthenticationFilter i
                                          AmbariAuthenticationEventHandler eventHandler) {
     super(authenticationManager, ambariEntryPoint);
 
-    if(eventHandler == null) {
+    if (eventHandler == null) {
       throw new IllegalArgumentException("The AmbariAuthenticationEventHandler must not be null");
     }
 
@@ -90,8 +92,28 @@ public class AmbariBasicAuthenticationFilter extends BasicAuthenticationFilter i
    */
   @Override
   public boolean shouldApply(HttpServletRequest httpServletRequest) {
+
+    if (LOG.isDebugEnabled()) {
+      RequestUtils.logRequestHeadersAndQueryParams(httpServletRequest, LOG);
+    }
+
     String header = httpServletRequest.getHeader("Authorization");
-    return (header != null) && header.startsWith("Basic ");
+    if ((header != null) && header.startsWith("Basic ")) {
+      // If doAs is sent as a query parameter, ignore the basic auth header.
+      // This logic is here to help deal with a potential issue when Knox is the trusted proxy and it
+      // forwards the original request's Authorization header (for Basic Auth) when Kerberos authentication
+      // is required.
+      String doAsQueryParameterValue = RequestUtils.getQueryStringParameterValue(httpServletRequest, "doAs");
+      if (StringUtils.isEmpty(doAsQueryParameterValue)) {
+        return true;
+      } else {
+        LOG.warn("The 'doAs' query parameter was provided; however, the BasicAuth header is found. " +
+            "Ignoring the BasicAuth header hoping to negotiate Kerberos authentication.");
+        return false;
+      }
+    } else {
+      return false;
+    }
   }
 
   @Override
@@ -104,11 +126,10 @@ public class AmbariBasicAuthenticationFilter extends BasicAuthenticationFilter i
    *
    * @param httpServletRequest  the request
    * @param httpServletResponse the response
-   * @param filterChain           the Spring filter chain
+   * @param filterChain         the Spring filter chain
    * @throws IOException
    * @throws ServletException
    */
-  @Override
   public void doFilterInternal(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, FilterChain filterChain) throws IOException, ServletException {
     if (eventHandler != null) {
       eventHandler.beforeAttemptAuthentication(this, httpServletRequest, httpServletResponse);
@@ -193,4 +214,6 @@ public class AmbariBasicAuthenticationFilter extends BasicAuthenticationFilter i
       return token.substring(0, delimiter);
     }
   }
+
+
 }

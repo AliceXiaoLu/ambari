@@ -18,15 +18,23 @@
 
 package org.apache.ambari.server.orm.dao;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.entities.KerberosKeytabEntity;
+import org.apache.ambari.server.orm.entities.KerberosKeytabPrincipalEntity;
+import org.apache.ambari.server.serveraction.kerberos.stageutils.ResolvedKerberosKeytab;
+import org.apache.commons.collections4.CollectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Stopwatch;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.Singleton;
@@ -34,6 +42,8 @@ import com.google.inject.persist.Transactional;
 
 @Singleton
 public class KerberosKeytabDAO {
+  private final static Logger LOG = LoggerFactory.getLogger(KerberosKeytabDAO.class);
+
   @Inject
   Provider<EntityManager> entityManagerProvider;
 
@@ -56,7 +66,10 @@ public class KerberosKeytabDAO {
 
   @Transactional
   public void remove(KerberosKeytabEntity kerberosKeytabEntity) {
-    entityManagerProvider.get().remove(merge(kerberosKeytabEntity));
+    if (kerberosKeytabEntity != null) {
+      EntityManager entityManager = entityManagerProvider.get();
+      entityManager.remove(entityManager.merge(kerberosKeytabEntity));
+    }
   }
 
   public void remove(String keytabPath) {
@@ -71,17 +84,32 @@ public class KerberosKeytabDAO {
     entityManagerProvider.get().refresh(kerberosKeytabEntity);
   }
 
-
   @RequiresSession
   public KerberosKeytabEntity find(String keytabPath) {
     return entityManagerProvider.get().find(KerberosKeytabEntity.class, keytabPath);
   }
 
   @RequiresSession
-  public List<KerberosKeytabEntity> findByPrincipalAndHost(String principalName, Long hostId) {
-    if(hostId == null) {
-      return findByPrincipalAndNullHost(principalName);
+  public KerberosKeytabEntity findOrCreate(ResolvedKerberosKeytab resolvedKerberosKeytab) {
+    KerberosKeytabEntity result = find(resolvedKerberosKeytab.getFile());
+    if (result == null) {
+      result = new KerberosKeytabEntity(resolvedKerberosKeytab);
+      create(result);
     }
+    return result;
+  }
+
+  @RequiresSession
+  public List<KerberosKeytabEntity> findByPrincipalAndHost(String principalName, Long hostId) {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    if(hostId == null) {
+      List<KerberosKeytabEntity> result = findByPrincipalAndNullHost(principalName);
+      LOG.debug("Loading keytabs by principal name took {}ms",
+          stopwatch.elapsed(TimeUnit.MILLISECONDS));
+
+      return result;
+    }
+
     TypedQuery<KerberosKeytabEntity> query = entityManagerProvider.get().
       createNamedQuery("KerberosKeytabEntity.findByPrincipalAndHost", KerberosKeytabEntity.class);
     query.setParameter("hostId", hostId);
@@ -90,6 +118,10 @@ public class KerberosKeytabDAO {
     if(result == null) {
       return Collections.emptyList();
     }
+
+    LOG.debug("Loading keytabs by principal name and host took {}ms",
+        stopwatch.elapsed(TimeUnit.MILLISECONDS));
+
     return result;
   }
 
@@ -132,5 +164,35 @@ public class KerberosKeytabDAO {
         remove(entity);
       }
     }
+  }
+
+  /**
+   * Determines if there are any references to the {@link KerberosKeytabEntity} before attemping
+   * to remove it.  If there are any references to it, the entity will be not be removed.
+   *
+   * @param kerberosKeytabEntity the entity
+   * @return <code>true</code>, if the entity was remove; <code>false</code> otherwise
+   */
+  public boolean removeIfNotReferenced(KerberosKeytabEntity kerberosKeytabEntity) {
+    if (kerberosKeytabEntity != null) {
+      if (CollectionUtils.isNotEmpty(kerberosKeytabEntity.getKerberosKeytabPrincipalEntities())) {
+        ArrayList<String> ids = new ArrayList<>();
+        for (KerberosKeytabPrincipalEntity entity : kerberosKeytabEntity.getKerberosKeytabPrincipalEntities()) {
+          Long id = entity.getKkpId();
+
+          if (id != null) {
+            ids.add(String.valueOf(id));
+          }
+        }
+
+        LOG.debug(String.format("keytab entry for %s is still referenced by [%s]", kerberosKeytabEntity.getKeytabPath(), String.join(",", ids)));
+      } else {
+        LOG.debug(String.format("keytab entry for %s is no longer referenced. It will be removed.", kerberosKeytabEntity.getKeytabPath()));
+        remove(kerberosKeytabEntity);
+        return true;
+      }
+    }
+
+    return false;
   }
 }

@@ -25,9 +25,11 @@ import org.apache.ambari.server.security.authentication.AccountDisabledException
 import org.apache.ambari.server.security.authentication.AmbariAuthenticationException;
 import org.apache.ambari.server.security.authentication.AmbariAuthenticationProvider;
 import org.apache.ambari.server.security.authentication.AmbariUserAuthentication;
+import org.apache.ambari.server.security.authentication.AmbariUserDetails;
+import org.apache.ambari.server.security.authentication.AmbariUserDetailsImpl;
 import org.apache.ambari.server.security.authentication.TooManyLoginFailuresException;
 import org.apache.ambari.server.security.authentication.UserNotFoundException;
-import org.apache.ambari.server.security.authorization.User;
+import org.apache.ambari.server.security.authorization.AuthorizationHelper;
 import org.apache.ambari.server.security.authorization.UserAuthenticationType;
 import org.apache.ambari.server.security.authorization.Users;
 import org.slf4j.Logger;
@@ -80,7 +82,7 @@ public class AmbariJwtAuthenticationProvider extends AmbariAuthenticationProvide
       throw new UserNotFoundException(userName, "Cannot find user from JWT. Please, ensure LDAP is configured and users are synced.");
     }
 
-    // If the user was found and allowed to log in, make sure that user is allowed to authentcate using a JWT token.
+    // If the user was found and allowed to log in, make sure that user is allowed to authenticate using a JWT token.
     boolean authOK = false;
     UserAuthenticationEntity authenticationEntity = getAuthenticationEntity(userEntity, UserAuthenticationType.JWT);
     if (authenticationEntity != null) {
@@ -118,10 +120,14 @@ public class AmbariJwtAuthenticationProvider extends AmbariAuthenticationProvide
         }
       }
 
-      User user = new User(userEntity);
-      Authentication auth = new AmbariUserAuthentication(authentication.getCredentials().toString(), user, users.getUserAuthorities(userEntity));
-      auth.setAuthenticated(true);
-      return auth;
+      AmbariUserDetails userDetails = new AmbariUserDetailsImpl(users.getUser(userEntity), null, users.getUserAuthorities(userEntity));
+      
+      String jwtTokenName = userDetails.getUsername().trim();
+      //If JwtToken Provided Username and authenticatedUsername is different Add it to Alias
+      if(!userName.equals(jwtTokenName)){
+        AuthorizationHelper.addLoginNameAlias(userName,jwtTokenName);
+      }
+      return new AmbariUserAuthentication(authentication.getCredentials().toString(), userDetails, true);
     } else {
       // The user was not authenticated, fail
       LOG.debug("Authentication failed: password does not match stored value: {}", userName);

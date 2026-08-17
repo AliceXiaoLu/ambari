@@ -54,6 +54,7 @@ import org.apache.ambari.server.agent.ExecutionCommand;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.orm.dao.HostDAO;
+import org.apache.ambari.server.stack.upgrade.orchestrate.UpgradeContextFactory;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Host;
@@ -61,16 +62,15 @@ import org.apache.ambari.server.state.HostComponentAdminState;
 import org.apache.ambari.server.state.Service;
 import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentHost;
-import org.apache.ambari.server.state.UpgradeContextFactory;
 import org.apache.ambari.server.testutils.PartialNiceMockBinder;
 import org.apache.ambari.server.topology.TopologyManager;
-import org.codehaus.jackson.JsonGenerationException;
-import org.codehaus.jackson.map.JsonMappingException;
 import org.easymock.EasyMockSupport;
 import org.easymock.IAnswer;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.fasterxml.jackson.core.JsonGenerationException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ContiguousSet;
 import com.google.common.collect.DiscreteDomain;
@@ -96,7 +96,7 @@ public class StageUtilsTest extends EasyMockSupport {
       protected void configure() {
 
         PartialNiceMockBinder.newBuilder(StageUtilsTest.this).addAmbariMetaInfoBinding()
-            .addDBAccessorBinding().build().configure(binder());
+            .addDBAccessorBinding().addLdapBindings().build().configure(binder());
 
         bind(AmbariMetaInfo.class).toInstance(createMock(AmbariMetaInfo.class));
         bind(TopologyManager.class).toInstance(createNiceMock(TopologyManager.class));
@@ -144,11 +144,6 @@ public class StageUtilsTest extends EasyMockSupport {
     StageUtils stageUtils = new StageUtils(injector.getInstance(StageFactory.class));
     Stage s = StageUtils.getATestStage(1, 2, "host1", "clusterHostInfo", "hostParamsStage");
     ExecutionCommand cmd = s.getExecutionCommands("host1").get(0).getExecutionCommand();
-    HashMap<String, Map<String, String>> configTags = new HashMap<>();
-    Map<String, String> globalTag = new HashMap<>();
-    globalTag.put("tag", "version1");
-    configTags.put("global", globalTag);
-    cmd.setConfigurationTags(configTags);
     String json = StageUtils.jaxbToString(cmd);
 
     InputStream is = new ByteArrayInputStream(
@@ -602,10 +597,11 @@ public class StageUtilsTest extends EasyMockSupport {
     Map<String, String> commandParams = new HashMap<>();
     Configuration configuration = new Configuration();
     configuration.setProperty("java.home", "myJavaHome");
+    configuration.setProperty("ambari.java.home", "ambari_java_home");
     // WHEN
     StageUtils.useAmbariJdkInCommandParams(commandParams, configuration);
     // THEN
-    assertEquals("myJavaHome", commandParams.get("ambari_java_home"));
+    assertEquals("ambari_java_home", commandParams.get("ambari_java_home"));
     assertEquals(2, commandParams.size());
   }
 
@@ -617,10 +613,11 @@ public class StageUtilsTest extends EasyMockSupport {
     configuration.setProperty("java.home", "myJavaHome");
     configuration.setProperty("jdk.name", "myJdkName");
     configuration.setProperty("jce.name", "myJceName");
+    configuration.setProperty("ambari.java.home", "ambari_java_home");
     // WHEN
     StageUtils.useAmbariJdkInCommandParams(commandParams, configuration);
     // THEN
-    assertEquals("myJavaHome", commandParams.get("ambari_java_home"));
+    assertEquals("ambari_java_home", commandParams.get("ambari_java_home"));
     assertEquals("myJdkName", commandParams.get("ambari_jdk_name"));
     assertEquals("myJceName", commandParams.get("ambari_jce_name"));
     assertEquals(4, commandParams.size());

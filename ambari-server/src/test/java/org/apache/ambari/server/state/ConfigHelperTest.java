@@ -39,7 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import javax.persistence.EntityManager;
+import jakarta.persistence.EntityManager;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.H2DatabaseCleaner;
@@ -50,6 +50,7 @@ import org.apache.ambari.server.controller.ClusterRequest;
 import org.apache.ambari.server.controller.ConfigurationRequest;
 import org.apache.ambari.server.controller.spi.ClusterController;
 import org.apache.ambari.server.events.publishers.STOMPUpdatePublisher;
+import org.apache.ambari.server.mpack.MpackManagerFactory;
 import org.apache.ambari.server.orm.DBAccessor;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
@@ -360,6 +361,45 @@ public class ConfigHelperTest {
       // config download removes hidden properties without respecting of component
       ConfigHelper.processHiddenAttribute(originalConfig_hiveServer1, configAttributes, "HIVE_SERVER", true);
       Assert.assertEquals(expectedConfig_hiveServer1, originalConfig_hiveServer1);
+    }
+
+    @Test
+    public void testGetHostsAffectedByConfigTypes() throws Exception {
+      Long h1 = clusters.getHost("h1").getHostId();
+      Long h2 = clusters.getHost("h2").getHostId();
+      Long h3 = clusters.getHost("h3").getHostId();
+      clusters.mapHostToCluster("h1", cluster.getClusterName());
+      clusters.mapHostToCluster("h2", cluster.getClusterName());
+      clusters.mapHostToCluster("h3", cluster.getClusterName());
+
+      // Empty changed types -> empty set (the caller falls back to all-hosts).
+      Assert.assertTrue(configHelper.getHostsAffectedByConfigTypes(cluster, new HashSet<String>()).isEmpty());
+
+      // A config type owned by no installed service (global, e.g. cluster-env) -> all hosts.
+      Set<String> globalType = new HashSet<>();
+      globalType.add("a-config-type-no-service-owns");
+      Set<Long> expectedAllHosts = new HashSet<>();
+      expectedAllHosts.add(h1);
+      expectedAllHosts.add(h2);
+      expectedAllHosts.add(h3);
+      Assert.assertEquals(expectedAllHosts, configHelper.getHostsAffectedByConfigTypes(cluster, globalType));
+
+      // cluster-env is a real stack-level config owned by no service -> must be treated as global.
+      Assert.assertNull("cluster-env must be unowned/global", cluster.getServiceByConfigType("cluster-env"));
+      Set<String> clusterEnv = new HashSet<>();
+      clusterEnv.add("cluster-env");
+      Assert.assertEquals(expectedAllHosts, configHelper.getHostsAffectedByConfigTypes(cluster, clusterEnv));
+
+      // hdfs-site is owned by the (installed) HDFS service, but no host runs an HDFS component yet -> empty.
+      Set<String> hdfsSite = new HashSet<>();
+      hdfsSite.add("hdfs-site");
+      Assert.assertTrue(configHelper.getHostsAffectedByConfigTypes(cluster, hdfsSite).isEmpty());
+
+      // Install an HDFS component on h1; hdfs-site now affects only h1.
+      cluster.getService("HDFS").addServiceComponent("NAMENODE").addServiceComponentHost("h1");
+      Set<Long> expectedH1Only = new HashSet<>();
+      expectedH1Only.add(h1);
+      Assert.assertEquals(expectedH1Only, configHelper.getHostsAffectedByConfigTypes(cluster, hdfsSite));
     }
 
     private Map<String, Map<String, String>> createHiveConfig() {
@@ -982,6 +1022,7 @@ public class ConfigHelperTest {
       // set up expectations
       expect(sch.getActualConfigs()).andReturn(schReturn).times(6);
       expect(sch.getHostName()).andReturn("h1").anyTimes();
+      expect(sch.getHost()).andReturn(clusters.getHost("h1")).anyTimes();
       expect(sch.getClusterId()).andReturn(cluster.getClusterId()).anyTimes();
       expect(sch.getServiceName()).andReturn("FLUME").anyTimes();
       expect(sch.getServiceComponentName()).andReturn("FLUME_HANDLER").anyTimes();
@@ -1057,6 +1098,7 @@ public class ConfigHelperTest {
     // set up expectations
     expect(sch.getActualConfigs()).andReturn(schReturn).anyTimes();
     expect(sch.getHostName()).andReturn("h1").anyTimes();
+    expect(sch.getHost()).andReturn(clusters.getHost("h1")).anyTimes();
     expect(sch.getClusterId()).andReturn(cluster.getClusterId()).anyTimes();
     expect(sch.getServiceName()).andReturn("HDFS").anyTimes();
     expect(sch.getServiceComponentName()).andReturn("NAMENODE").anyTimes();
@@ -1153,7 +1195,7 @@ public class ConfigHelperTest {
           final AmbariMetaInfo mockMetaInfo = createNiceMock(AmbariMetaInfo.class);
           final ClusterController clusterController = createStrictMock(ClusterController.class);
 
-          PartialNiceMockBinder.newBuilder().addAmbariMetaInfoBinding().addFactoriesInstallBinding().build().configure(binder());
+          PartialNiceMockBinder.newBuilder().addAmbariMetaInfoBinding().addFactoriesInstallBinding().addLdapBindings().build().configure(binder());
 
           bind(EntityManager.class).toInstance(createNiceMock(EntityManager.class));
           bind(DBAccessor.class).toInstance(createNiceMock(DBAccessor.class));
@@ -1166,6 +1208,8 @@ public class ConfigHelperTest {
           bind(StackManagerFactory.class).toInstance(createNiceMock(StackManagerFactory.class));
           bind(HostRoleCommandDAO.class).toInstance(createNiceMock(HostRoleCommandDAO.class));
           bind(STOMPUpdatePublisher.class).toInstance(createNiceMock(STOMPUpdatePublisher.class));
+          bind(MpackManagerFactory.class).toInstance(createNiceMock(MpackManagerFactory.class));
+
         }
       });
 

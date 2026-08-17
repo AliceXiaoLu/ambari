@@ -17,27 +17,27 @@
  */
 package org.apache.ambari.server.orm.entities;
 
-import java.util.Date;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
-import javax.persistence.Basic;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.PrePersist;
-import javax.persistence.PreUpdate;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.Temporal;
-import javax.persistence.TemporalType;
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.TableGenerator;
 
 import org.apache.ambari.server.security.authorization.UserAuthenticationType;
 import org.apache.commons.lang.builder.EqualsBuilder;
@@ -78,13 +78,11 @@ public class UserAuthenticationEntity {
 
   @Column(name = "create_time", nullable = false)
   @Basic
-  @Temporal(value = TemporalType.TIMESTAMP)
-  private Date createTime = new Date();
+  private long createTime;
 
   @Column(name = "update_time", nullable = false)
   @Basic
-  @Temporal(value = TemporalType.TIMESTAMP)
-  private Date updateTime = new Date();
+  private long updateTime ;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "user_id", referencedColumnName = "user_id", nullable = false)
@@ -107,6 +105,16 @@ public class UserAuthenticationEntity {
   }
 
   public String getAuthenticationKey() {
+    if (getAuthenticationType().equals(UserAuthenticationType.LOCAL)) {
+      int firstCommaIndex = authenticationKey.indexOf(",");
+      if (firstCommaIndex != -1) {
+        return authenticationKey.substring(0, firstCommaIndex);
+      }
+    }
+    return authenticationKey;
+  }
+
+  public String getFullAuthenticationKey() {
     return authenticationKey;
   }
 
@@ -114,11 +122,25 @@ public class UserAuthenticationEntity {
     this.authenticationKey = authenticationKey;
   }
 
-  public Date getCreateTime() {
+  public void updateAuthenticationKey(String newAuthenticationKey, int historyCount) {
+    if (this.authenticationKey == null || this.authenticationKey.isEmpty()) {
+        this.authenticationKey = newAuthenticationKey;
+    } else {
+        String[] keys = this.authenticationKey.split(",");
+        List<String> keyList = new ArrayList<>(Arrays.asList(keys));
+        if (keyList.size() >= historyCount) {
+            keyList = keyList.subList(0, historyCount - 1);
+        }
+        keyList.add(0, newAuthenticationKey);
+        this.authenticationKey = String.join(",", keyList);
+    }
+}
+
+  public long getCreateTime() {
     return createTime;
   }
 
-  public Date getUpdateTime() {
+  public long getUpdateTime() {
     return updateTime;
   }
 
@@ -145,8 +167,9 @@ public class UserAuthenticationEntity {
    */
   @PrePersist
   protected void onCreate() {
-    createTime = new Date();
-    updateTime = new Date();
+    final long now = System.currentTimeMillis();
+    createTime = now;
+    updateTime = now;
   }
 
   /**
@@ -154,7 +177,7 @@ public class UserAuthenticationEntity {
    */
   @PreUpdate
   protected void onUpdate() {
-    updateTime = new Date();
+    updateTime = System.currentTimeMillis();
   }
 
   @Override

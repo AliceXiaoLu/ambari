@@ -101,6 +101,7 @@ public class PrincipalKeyCredential implements Credential {
    *
    * @return a String containing the value representation of this PrincipalKeyCredential
    */
+  @Override
   public char[] toValue() {
     StringBuilder builder = new StringBuilder();
     builder.append("PrincipalKeyCredential");
@@ -114,7 +115,7 @@ public class PrincipalKeyCredential implements Credential {
       return false;
     } else if (this == obj) {
       return true;
-    } else if (obj.getClass() == PrincipalKeyCredential.class) {
+    } else if (obj.getClass() == this.getClass()) {
       PrincipalKeyCredential other = (PrincipalKeyCredential) obj;
       return ((this.principal == null) ? (other.principal == null) : this.principal.equals(other.principal)) &&
           ((this.key == null) ? (other.key == null) : Arrays.equals(this.key, other.key));

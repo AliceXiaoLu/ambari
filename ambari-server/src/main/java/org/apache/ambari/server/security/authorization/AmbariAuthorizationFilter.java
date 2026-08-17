@@ -23,14 +23,14 @@ import java.security.Principal;
 import java.util.EnumSet;
 import java.util.regex.Pattern;
 
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.FilterConfig;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.apache.ambari.server.audit.AuditLogger;
 import org.apache.ambari.server.audit.event.AccessUnauthorizedAuditEvent;
@@ -72,8 +72,10 @@ public class AmbariAuthorizationFilter implements Filter {
   private static final String API_GROUPS_ALL_PATTERN = API_VERSION_PREFIX + "/groups.*";
   private static final String API_CLUSTERS_PATTERN = API_VERSION_PREFIX + "/clusters/(\\w+/?)?";
   private static final String API_WIDGET_LAYOUTS_PATTERN = API_VERSION_PREFIX + "/clusters/.*?/widget_layouts.*?";
+  private static final String API_WIDGET_PATTERN = API_VERSION_PREFIX + "/clusters/.*?/widgets.*";
   private static final String API_CLUSTERS_ALL_PATTERN = API_VERSION_PREFIX + "/clusters.*";
   private static final String API_VIEWS_ALL_PATTERN = API_VERSION_PREFIX + "/views.*";
+  private static final String API_AUTH_PATTERN = API_VERSION_PREFIX + "/auth";
   private static final String API_PERSIST_ALL_PATTERN = API_VERSION_PREFIX + "/persist.*";
   private static final String API_LDAP_SYNC_EVENTS_ALL_PATTERN = API_VERSION_PREFIX + "/ldap_sync_events.*";
   private static final String API_CREDENTIALS_ALL_PATTERN = API_VERSION_PREFIX + "/clusters/.*?/credentials.*";
@@ -181,6 +183,7 @@ public class AmbariAuthorizationFilter implements Filter {
         if(auditLogger.isEnabled()) {
           LoginAuditEvent loginAuditEvent = LoginAuditEvent.builder()
             .withUserName(internalAuthenticationToken.getName())
+            .withProxyUserName(AuthorizationHelper.getProxyUserName(internalAuthenticationToken))
             .withRemoteIp(RequestUtils.getRemoteAddress(httpRequest))
             .withRoles(permissionHelper.getPermissionLabels(authentication))
             .withTimestamp(System.currentTimeMillis()).build();
@@ -248,6 +251,10 @@ public class AmbariAuthorizationFilter implements Filter {
                 authorized = true;
                 break;
               }
+            } else if (requestURI.matches(API_AUTH_PATTERN) && "POST".equalsIgnoreCase(httpRequest.getMethod())) {
+              // all are able to login
+              authorized = true;
+              break;
             }
           }
         }
@@ -263,6 +270,7 @@ public class AmbariAuthorizationFilter implements Filter {
             .withRemoteIp(RequestUtils.getRemoteAddress(httpRequest))
             .withResourcePath(httpRequest.getRequestURI())
             .withUserName(AuthorizationHelper.getAuthenticatedName())
+            .withProxyUserName(AuthorizationHelper.getProxyUserName())
             .withTimestamp(System.currentTimeMillis())
             .build();
           auditLogger.log(auditEvent);
@@ -282,6 +290,7 @@ public class AmbariAuthorizationFilter implements Filter {
           .withRemoteIp(RequestUtils.getRemoteAddress(httpRequest))
           .withResourcePath(httpRequest.getRequestURI())
           .withUserName(AuthorizationHelper.getAuthenticatedName())
+          .withProxyUserName(AuthorizationHelper.getProxyUserName())
           .withTimestamp(System.currentTimeMillis())
           .build();
         auditLogger.log(auditEvent);
@@ -342,6 +351,7 @@ public class AmbariAuthorizationFilter implements Filter {
         requestURI.matches(API_VIEWS_ALL_PATTERN) ||
         requestURI.matches(VIEWS_CONTEXT_PATH_PATTERN) ||
         requestURI.matches(API_WIDGET_LAYOUTS_PATTERN) ||
+        requestURI.matches(API_WIDGET_PATTERN) ||
         requestURI.matches(API_CLUSTER_HOSTS_ALL_PATTERN) ||
         requestURI.matches(API_CLUSTER_CONFIGURATIONS_ALL_PATTERN) ||
         requestURI.matches(API_CLUSTER_COMPONENTS_ALL_PATTERN) ||
@@ -349,7 +359,6 @@ public class AmbariAuthorizationFilter implements Filter {
         requestURI.matches(API_CLUSTER_CONFIG_GROUPS_ALL_PATTERN) ||
         requestURI.matches(API_HOSTS_ALL_PATTERN) ||
         requestURI.matches(API_ALERT_TARGETS_ALL_PATTERN) ||
-        requestURI.matches(API_PRIVILEGES_ALL_PATTERN) ||
         requestURI.matches(API_PERSIST_ALL_PATTERN) ||
         requestURI.matches(API_CLUSTERS_UPGRADES_PATTERN);
   }

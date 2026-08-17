@@ -18,17 +18,17 @@
 
 package org.apache.ambari.server.orm.entities;
 
-import javax.persistence.Basic;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.Id;
-import javax.persistence.IdClass;
-import javax.persistence.JoinColumn;
-import javax.persistence.JoinColumns;
-import javax.persistence.Lob;
-import javax.persistence.ManyToOne;
-import javax.persistence.Table;
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 
 /**
  * Represents a blueprint host group configuration.
@@ -74,6 +74,7 @@ public class HostGroupConfigEntity implements BlueprintConfiguration {
    *
    * @return configuration type
    */
+  @Override
   public String getType() {
     return type;
   }
@@ -83,6 +84,7 @@ public class HostGroupConfigEntity implements BlueprintConfiguration {
    *
    * @param type  configuration type
    */
+  @Override
   public void setType(String type) {
     this.type = type;
   }
@@ -110,6 +112,7 @@ public class HostGroupConfigEntity implements BlueprintConfiguration {
    *
    * @return blueprint name
    */
+  @Override
   public String getBlueprintName() {
     return blueprintName;
   }
@@ -119,6 +122,7 @@ public class HostGroupConfigEntity implements BlueprintConfiguration {
    * '
    * @param blueprintName  blueprint name
    */
+  @Override
   public void setBlueprintName(String blueprintName) {
     this.blueprintName = blueprintName;
   }
@@ -146,6 +150,7 @@ public class HostGroupConfigEntity implements BlueprintConfiguration {
    *
    * @return config data in json format
    */
+  @Override
   public String getConfigData() {
     return configData;
   }
@@ -155,6 +160,7 @@ public class HostGroupConfigEntity implements BlueprintConfiguration {
    *
    * @param configData  all config data in json format
    */
+  @Override
   public void setConfigData(String configData) {
     this.configData = configData;
   }
@@ -164,6 +170,7 @@ public class HostGroupConfigEntity implements BlueprintConfiguration {
    *
    * @return config attributes in JSON format
    */
+  @Override
   public String getConfigAttributes() {
     return configAttributes;
   }
@@ -173,6 +180,7 @@ public class HostGroupConfigEntity implements BlueprintConfiguration {
    *
    * @param configAttributes  all attribute values of configs in JSON format
    */
+  @Override
   public void setConfigAttributes(String configAttributes) {
     this.configAttributes = configAttributes;
   }

@@ -19,15 +19,15 @@ package org.apache.ambari.server.orm.dao;
 
 import java.util.List;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.entities.UpgradeEntity;
 import org.apache.ambari.server.orm.entities.UpgradeGroupEntity;
 import org.apache.ambari.server.orm.entities.UpgradeItemEntity;
-import org.apache.ambari.server.state.RepositoryType;
-import org.apache.ambari.server.state.stack.upgrade.Direction;
+import org.apache.ambari.server.stack.upgrade.Direction;
+import org.apache.ambari.spi.RepositoryType;
 
 import com.google.inject.Inject;
 import com.google.inject.Provider;

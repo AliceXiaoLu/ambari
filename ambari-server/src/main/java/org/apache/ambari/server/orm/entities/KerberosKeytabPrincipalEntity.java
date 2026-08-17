@@ -18,21 +18,26 @@
 package org.apache.ambari.server.orm.entities;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.OneToMany;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.QueryHint;
+import jakarta.persistence.Table;
+import jakarta.persistence.TableGenerator;
+
+import org.apache.ambari.server.serveraction.kerberos.stageutils.ResolvedKerberosPrincipal;
 
 import com.google.common.base.Objects;
 import com.google.common.collect.ArrayListMultimap;
@@ -71,6 +76,13 @@ import com.google.common.collect.Multimap;
     query = "SELECT kkpe FROM KerberosKeytabPrincipalEntity kkpe WHERE kkpe.hostId=:hostId"
   ),
   @NamedQuery(
+    name = "KerberosKeytabPrincipalEntity.findByPrincipalAndHost",
+    query = "SELECT kkpe FROM KerberosKeytabPrincipalEntity kkpe WHERE kkpe.hostId=:hostId AND kkpe.principalName=:principalName",
+    hints = {
+      @QueryHint(name = "eclipselink.query-results-cache", value = "true"),
+      @QueryHint(name = "eclipselink.query-results-cache.size", value = "500") }
+  ),
+  @NamedQuery(
     name = "KerberosKeytabPrincipalEntity.findByHostKeytabAndPrincipal",
     query = "SELECT kkpe FROM KerberosKeytabPrincipalEntity kkpe WHERE kkpe.hostId=:hostId AND kkpe.keytabPath=:keytabPath AND kkpe.principalName=:principalName"
   ),
@@ -97,7 +109,12 @@ public class KerberosKeytabPrincipalEntity {
   @Column(name = "is_distributed", nullable = false)
   private Integer isDistributed = 0;
 
-  @ManyToOne
+  /**
+   * The assocaited keytab entity must be fetched {@link FetchType#EAGER} to
+   * ensure that it can be discovered when only the principal and host are
+   * known.
+   */
+  @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "keytab_path", referencedColumnName = "keytab_path", updatable = false, nullable = false, insertable = false)
   private KerberosKeytabEntity kerberosKeytabEntity;
 
@@ -107,23 +124,24 @@ public class KerberosKeytabPrincipalEntity {
 
   @ManyToOne
   @JoinColumn(name = "principal_name", referencedColumnName = "principal_name", updatable = false, nullable = false, insertable = false)
-  private KerberosPrincipalEntity principalEntity;
+  private KerberosPrincipalEntity kerberosPrincipalEntity;
 
-  @OneToMany(cascade = CascadeType.ALL, mappedBy = "kerberosKeytabPrincipalEntity")
+  /**
+   * Service mappings must be fetched {@link FetchType#EAGER} since they are
+   * required when processing {@link KerberosKeytabPrincipalEntity} instances
+   * and turning them into {@link ResolvedKerberosPrincipal}.
+   */
+  @OneToMany(cascade = CascadeType.ALL, mappedBy = "kerberosKeytabPrincipalEntity", orphanRemoval = true, fetch = FetchType.EAGER)
   private List<KerberosKeytabServiceMappingEntity> serviceMapping = new ArrayList<>();
 
   public KerberosKeytabPrincipalEntity() {
 
   }
 
-  public KerberosKeytabPrincipalEntity(
-    KerberosKeytabEntity kerberosKeytabEntity,
-    HostEntity hostEntity,
-    KerberosPrincipalEntity principalEntity
-  ) {
+  public KerberosKeytabPrincipalEntity(KerberosKeytabEntity kerberosKeytabEntity, HostEntity hostEntity, KerberosPrincipalEntity kerberosPrincipalEntity) {
     setKerberosKeytabEntity(kerberosKeytabEntity);
     setHostEntity(hostEntity);
-    setPrincipalEntity(principalEntity);
+    setKerberosPrincipalEntity(kerberosPrincipalEntity);
   }
 
   public Long getKkpId() {
@@ -147,7 +165,7 @@ public class KerberosKeytabPrincipalEntity {
   }
 
   public void setKerberosKeytabEntity(KerberosKeytabEntity kke) {
-    this.kerberosKeytabEntity = kke;
+    kerberosKeytabEntity = kke;
     if (kke != null) {
       keytabPath = kke.getKeytabPath();
     }
@@ -164,14 +182,14 @@ public class KerberosKeytabPrincipalEntity {
     }
   }
 
-  public KerberosPrincipalEntity getPrincipalEntity() {
-    return principalEntity;
+  public KerberosPrincipalEntity getKerberosPrincipalEntity() {
+    return kerberosPrincipalEntity;
   }
 
-  public void setPrincipalEntity(KerberosPrincipalEntity principalEntity) {
-    this.principalEntity = principalEntity;
-    if (principalEntity != null) {
-      principalName = principalEntity.getPrincipalName();
+  public void setKerberosPrincipalEntity(KerberosPrincipalEntity kerberosPrincipalEntity) {
+    this.kerberosPrincipalEntity = kerberosPrincipalEntity;
+    if (kerberosPrincipalEntity != null) {
+      principalName = kerberosPrincipalEntity.getPrincipalName();
     }
   }
 
@@ -181,7 +199,7 @@ public class KerberosKeytabPrincipalEntity {
 
 
   public String getPrincipalName() {
-    return principalEntity != null ? principalEntity.getPrincipalName() : null;
+    return kerberosPrincipalEntity != null ? kerberosPrincipalEntity.getPrincipalName() : null;
   }
 
   public Long getHostId() {
@@ -190,6 +208,16 @@ public class KerberosKeytabPrincipalEntity {
 
   public String getHostName() {
     return hostEntity != null ? hostEntity.getHostName() : null;
+  }
+
+  public List<KerberosKeytabServiceMappingEntity> getServiceMapping() {
+    return serviceMapping;
+  }
+
+  public void setServiceMapping(List<KerberosKeytabServiceMappingEntity> serviceMapping) {
+    this.serviceMapping = (serviceMapping == null)
+        ? Collections.emptyList()
+        : new ArrayList<>(serviceMapping);
   }
 
   public boolean putServiceMapping(String service, String component) {

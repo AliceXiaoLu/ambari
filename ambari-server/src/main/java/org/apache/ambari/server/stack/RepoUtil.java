@@ -34,7 +34,7 @@ import org.apache.ambari.server.orm.entities.RepoDefinitionEntity;
 import org.apache.ambari.server.orm.entities.RepoOsEntity;
 import org.apache.ambari.server.state.RepositoryInfo;
 import org.apache.ambari.server.state.stack.RepositoryXml;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,7 +70,7 @@ public class RepoUtil {
 
   private static final Function<RepoDefinitionEntity, String> REPO_ENTITY_TO_NAME = new Function<RepoDefinitionEntity, String>() {
     @Override
-    public String apply(@Nullable RepoDefinitionEntity input) {
+    public String apply(RepoDefinitionEntity input) {
       return input.getRepoName();
     }
   };

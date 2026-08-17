@@ -233,19 +233,8 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
   startStopPopupSuccessCallback: function (data, ajaxOptions, params) {
     if (data && data.Requests) {
       params.query.set('status', 'SUCCESS');
-      if (App.get('testMode')) {
-        const requestData = JSON.parse(ajaxOptions.data),
-          state = requestData.Body.ServiceInfo.state || requestData.Body.HostRoles.state,
-          config = this.get('callBackConfig')[state];
-        this.set('content.workStatus', App.Service.Health[config.f]);
-        this.get('content.hostComponents').setEach('workStatus', App.HostComponentStatus[config.f]);
-        setTimeout(() => {
-          this.set('content.workStatus', App.Service.Health[config.c2]);
-          this.get('content.hostComponents').setEach('workStatus', App.HostComponentStatus[config.hs]);
-        }, App.get('testModeDelayForActions'));
-      }
       // load data (if we need to show this background operations popup) from persist
-      App.router.get('userSettingsController').dataLoading('show_bg').done(function (initValue) {
+      App.router.get('userSettingsController').dataLoading('show_bg').done((initValue) => {
         if (initValue) {
           App.router.get('backgroundOperationsController').showPopup();
         }
@@ -348,7 +337,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
    * @param [groupName] - id of HA namespace for enabled NameNode federation
    */
   checkNnLastCheckpointTime: function (callback, groupName) {
-    this.pullNnCheckPointTime(groupName).complete(() => {
+    this.pullNnCheckPointTime(groupName).always(() => {
       const nameNodesWithOldCheckpoints = this.get('nameNodesWithOldCheckpoints').slice(),
         isNameNodeCheckpointUnavailable = this.get('isNameNodeCheckpointUnavailable');
       this.get('nameNodesWithOldCheckpoints').clear();
@@ -356,33 +345,8 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
       if (nameNodesWithOldCheckpoints.length) {
         // too old
         this.getHdfsUser().done(() => {
-          const maxAge = App.nnCheckpointAgeAlertThreshold,
-            hdfsUser = this.get('hdfsUser'),
-            confirmButton = Em.I18n.t('common.next');
-          let msg;
-          if (App.get('hasNameNodeFederation') && !groupName) {
-            const oldCheckpointNameSpacesList = nameNodesWithOldCheckpoints.map(nn => `<li>${nn.haNameSpace}</li>`),
-              nameSpacesString = `<ul>${oldCheckpointNameSpacesList.join('')}</ul>`,
-              hostNamesList = nameNodesWithOldCheckpoints.map(nn => `<b>${nn.hostName}</b>`).join(', ');
-            msg = Em.Object.create({
-              confirmMsg: Em.I18n.t('services.service.stop.HDFS.warningMsg.nameSpaces.checkPointTooOld').format(maxAge) +
-                nameSpacesString +
-                Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.makeSure') +
-                Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.instructions.multipleHosts.login').format(hostNamesList) +
-                Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.instructions').format(hdfsUser),
-              confirmButton
-            })
-          } else {
-            const hostName = nameNodesWithOldCheckpoints[0].hostName;
-            msg = Em.Object.create({
-              confirmMsg: Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld').format(maxAge) +
-                Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.makeSure') +
-                Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.instructions.singleHost.login').format(hostName) +
-                Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.instructions').format(hdfsUser),
-              confirmButton
-            })
-          }
-          return App.showConfirmationFeedBackPopup(callback, msg);
+          const message = this.getMessageForOldCheckpoints(groupName, nameNodesWithOldCheckpoints);
+          return App.showConfirmationFeedBackPopup(callback, message);
         });
       } else if (isNameNodeCheckpointUnavailable) {
         // not available
@@ -395,6 +359,40 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
         callback();
       }
     });
+  },
+  
+  /**
+   *
+   * @param {string} groupName
+   * @param {Array} nameNodesWithOldCheckpoints
+   * @return {Em.Object}
+   */
+  getMessageForOldCheckpoints: function(groupName, nameNodesWithOldCheckpoints) {
+    const maxAge = App.nnCheckpointAgeAlertThreshold,
+      hdfsUser = this.get('hdfsUser'),
+      confirmButton = Em.I18n.t('common.next');
+    if (App.get('hasNameNodeFederation') && !groupName) {
+      const oldCheckpointNameSpacesList = nameNodesWithOldCheckpoints.map(nn => `<li>${nn.haNameSpace}</li>`),
+        nameSpacesString = `<ul>${oldCheckpointNameSpacesList.join('')}</ul>`,
+        hostNamesList = nameNodesWithOldCheckpoints.map(nn => `<b>${nn.hostName}</b>`).join(', ');
+      return Em.Object.create({
+        confirmMsg: Em.I18n.t('services.service.stop.HDFS.warningMsg.nameSpaces.checkPointTooOld').format(maxAge) +
+        nameSpacesString +
+        Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.makeSure') +
+        Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.instructions.multipleHosts.login').format(hostNamesList) +
+        Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.instructions').format(hdfsUser),
+        confirmButton
+      });
+    } else {
+      const hostName = nameNodesWithOldCheckpoints[0].hostName;
+      return Em.Object.create({
+        confirmMsg: Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld').format(maxAge) +
+        Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.makeSure') +
+        Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.instructions.singleHost.login').format(hostName) +
+        Em.I18n.t('services.service.stop.HDFS.warningMsg.checkPointTooOld.instructions').format(hdfsUser),
+        confirmButton
+      });
+    }
   },
 
   pullNnCheckPointTime: function (haNameSpace) {
@@ -541,11 +539,11 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
   startStopWithMmode: function(serviceHealth, query, runMmOperation, components, hosts, label) {
     if (runMmOperation) {
       if (serviceHealth === 'STARTED') {
-        this.startStopPopupPrimary(serviceHealth, query, components, hosts, label).complete(() => {
+        this.startStopPopupPrimary(serviceHealth, query, components, hosts, label).always(() => {
           batchUtils.turnOnOffPassiveRequest('OFF', Em.I18n.t('passiveState.turnOff'), this.get('content.serviceName').toUpperCase());
         });
       } else {
-        batchUtils.turnOnOffPassiveRequest('ON', Em.I18n.t('passiveState.turnOn'), this.get('content.serviceName').toUpperCase()).complete(() => {
+        batchUtils.turnOnOffPassiveRequest('ON', Em.I18n.t('passiveState.turnOn'), this.get('content.serviceName').toUpperCase()).always(() => {
           this.startStopPopupPrimary(serviceHealth, query, components, hosts, label);
         })
       }
@@ -576,7 +574,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
           sender: this,
           data: {
             context,
-            serviceName: serviceName.toUpperCase(),
+            serviceName: serviceName,
             state: serviceHealth,
             query: requestQuery
           },
@@ -641,39 +639,36 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
   },
    /**
    * On click handler for Yarn Refresh Queues command from items menu
-   * @param event
    */
-  refreshYarnQueues : function (event) {
-    var controller = this;
-    var hosts = App.Service.find('YARN').get('hostComponents').filterProperty('componentName', 'RESOURCEMANAGER').mapProperty('hostName');
-    return App.showConfirmationPopup(function() {
-    App.ajax.send({
-      name : 'service.item.refreshQueueYarnRequest',
-        sender: controller,
-      data : {
-        command : "REFRESHQUEUES",
-        context : Em.I18n.t('services.service.actions.run.yarnRefreshQueues.context') ,
-        hosts : hosts.join(','),
-        serviceName : "YARN",
-        componentName : "RESOURCEMANAGER",
-        forceRefreshConfigTags : "capacity-scheduler"
-      },
-      success : 'refreshYarnQueuesSuccessCallback',
-      error : 'refreshYarnQueuesErrorCallback',
-      showLoadingPopup: true
-    });
-    });
+  refreshYarnQueues : function () {
+     return App.showConfirmationPopup(() => {
+       App.ajax.send({
+         name: 'service.item.refreshQueueYarnRequest',
+         sender: this,
+         data: {
+           command: "REFRESHQUEUES",
+           context: Em.I18n.t('services.service.actions.run.yarnRefreshQueues.context'),
+           hosts: App.MasterComponent.find('RESOURCEMANAGER').get('hostNames').join(','),
+           serviceName: "YARN",
+           componentName: "RESOURCEMANAGER",
+           forceRefreshConfigTags: "capacity-scheduler"
+         },
+         success: 'refreshYarnQueuesSuccessCallback',
+         error: 'refreshYarnQueuesErrorCallback',
+         showLoadingPopup: true
+       });
+     });
   },
-  refreshYarnQueuesSuccessCallback  : function(data, ajaxOptions, params) {
+  refreshYarnQueuesSuccessCallback: function(data, ajaxOptions, params) {
     if (data.Requests.id) {
       App.router.get('backgroundOperationsController').showPopup();
     }
   },
-  refreshYarnQueuesErrorCallback : function(data) {
+  refreshYarnQueuesErrorCallback: function(data) {
     var error = Em.I18n.t('services.service.actions.run.yarnRefreshQueues.error');
     if(data && data.responseText){
       try {
-        var json = $.parseJSON(data.responseText);
+        var json = JSON.parse(data.responseText);
         error += json.message;
       } catch (err) {}
     }
@@ -689,11 +684,11 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     var context = Em.I18n.t('services.service.actions.run.stopLdapKnox.context');
     this.startStopLdapKnox('STOPDEMOLDAP',context);
   },
-
-  startStopLdapKnox: function(command,context) {
+  
+  startStopLdapKnox: function (command, context) {
     var controller = this;
     var host = App.HostComponent.find().findProperty('componentName', 'KNOX_GATEWAY').get('hostName');
-    return App.showConfirmationPopup(function() {
+    return App.showConfirmationPopup(() => {
       App.ajax.send({
         name: 'service.item.startStopLdapKnox',
         sender: controller,
@@ -720,7 +715,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     var error = Em.I18n.t('services.service.actions.run.startStopLdapKnox.error');
     if(data && data.responseText){
       try {
-        var json = $.parseJSON(data.responseText);
+        var json = JSON.parse(data.responseText);
         error += json.message;
       } catch (err) {}
     }
@@ -731,7 +726,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     var isRefreshQueueRequired, self = this;
     return App.showConfirmationPopup(function () {
       // regresh queue request is sending only if YARN service has stale configs
-      isRefreshQueueRequired = App.Service.find().findProperty('serviceName', 'YARN').get('isRestartRequired');
+      isRefreshQueueRequired = App.Service.find('YARN').get('isRestartRequired');
       if (isRefreshQueueRequired) {
         self.restartLLAPAndRefreshQueueRequest();
       } else {
@@ -759,8 +754,8 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
   },
 
   restartLLAPAndRefreshQueueRequest: function () {
-    var hiveServerInteractiveHost = App.HostComponent.find().findProperty('componentName', 'HIVE_SERVER_INTERACTIVE').get('hostName');
-    var resourceManagerHost = App.HostComponent.find().findProperty('componentName', 'RESOURCEMANAGER').get('hostName');
+    var hiveServerInteractiveHost = App.MasterComponent.find('HIVE_SERVER_INTERACTIVE').get('hostNames')[0];
+    var resourceManagerHost = App.MasterComponent.find('RESOURCEMANAGER').get('hostNames')[0];
     var batches = [{
       "order_id": 1,
       "type": "POST",
@@ -816,7 +811,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     var error = Em.I18n.t('services.service.actions.run.executeCustomCommand.error');
     if (data && data.responseText) {
       try {
-        var json = $.parseJSON(data.responseText);
+        var json = JSON.parse(data.responseText);
         error += json.message;
       } catch (err) {}
     }
@@ -829,7 +824,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
   rebalanceHdfsNodes: function () {
     var controller = this;
     App.ModalPopup.show({
-      classNames: ['fourty-percent-width-modal'],
+      classNames: ['forty-percent-width-modal'],
       header: Em.I18n.t('services.service.actions.run.rebalanceHdfsNodes.context'),
       primary: Em.I18n.t('common.start'),
       secondary: Em.I18n.t('common.cancel'),
@@ -878,7 +873,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     var error = Em.I18n.t('services.service.actions.run.rebalanceHdfsNodes.error');
     if(data && data.responseText){
       try {
-        var json = $.parseJSON(data.responseText);
+        var json = JSON.parse(data.responseText);
         error += json.message;
       } catch (err) {
       }
@@ -909,7 +904,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
   },
 
   regenerateKeytabFileOperationsRequestError: function () {
-    App.showAlertPopup(Em.I18n.t('common.error'), Em.I18n.t('alerts.notifications.regenerateKeytab.service.error').format(this.content.get('serviceName')));
+    App.showAlertPopup(Em.I18n.t('common.error'), Em.I18n.t('alerts.notifications.regenerateKeytab.service.error').format(this.get('content.serviceName')));
   },
   /**
    * On click callback for <code>run compaction</code> button
@@ -942,6 +937,146 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     });
   },
 
+  /**
+   * On click handler for Update HBase Replication command from items menu
+   */
+  updateHBaseReplication: function () {
+    const controller = this;
+    App.ModalPopup.show({
+      classNames: ['sixty-percent-width-modal', 'service-params-popup'],
+      header: Em.I18n.t('services.service.actions.run.updateHBaseReplication.context'),
+      primary: Em.I18n.t('common.start'),
+      secondary: Em.I18n.t('common.cancel'),
+      peerId: '',
+      parentzkey: '/hbase',
+      zkport: '2181',
+      zkquorum: '',
+      errorMessage: Em.I18n.t('services.service.actions.run.updateHBaseReplication.promptError'),
+      isInvalid: function () {
+        const zkquorum = this.get('zkquorum');
+        const zkport = this.get('zkport');
+        const parentzkey = this.get('parentzkey');
+        const peerId = this.get('peerId');
+        if (zkquorum && zkport && parentzkey && peerId) {
+          if (isNaN(zkport) || isNaN(peerId)) {
+            return true;
+          }
+          const zkquorumArray = zkquorum.split(',');
+          return zkquorumArray.length < 2;
+        } else {
+          return true;
+        }
+      }.property('zkquorum', 'zkport', 'parentzkey', 'peerId'),
+      disablePrimary: Em.computed.alias('isInvalid'),
+      onPrimary: function () {
+        if (this.get('isInvalid')) {
+          return;
+        }
+        App.ajax.send({
+          name: 'service.item.updateHBaseReplication',
+          sender: controller,
+          data: {
+            hosts: App.Service.find('HBASE').get('hostComponents').findProperty('componentName', 'HBASE_MASTER').get('hostName'),
+            replication_peers: this.get('peerId'),
+            replication_cluster_keys: this.get('zkquorum') + ':' + this.get('zkport') + ":" + this.get('parentzkey')
+          },
+          success: 'updateHBaseReplicationSuccessCallback',
+          error: 'updateHBaseReplicationErrorCallback',
+          showLoadingPopup: true
+        });
+        this.hide();
+      },
+      bodyClass: Ember.View.extend({
+        templateName: require('templates/common/modal_popups/update_replication_popup'),
+        zkquorumText: Em.I18n.t('services.service.actions.run.updateHBaseReplication.zkquorumText.prompt'),
+        zkportText: Em.I18n.t('services.service.actions.run.updateHBaseReplication.zkportText.prompt'),
+        parentzkeyText: Em.I18n.t('services.service.actions.run.updateHBaseReplication.parentzkeyText.prompt'),
+        peerIdText: Em.I18n.t('services.service.actions.run.updateHBaseReplication.peerIdText.prompt')
+      })
+    });
+  },
+
+  updateHBaseReplicationSuccessCallback: function (data) {
+    if (data.Requests.id) {
+      App.router.get('backgroundOperationsController').showPopup();
+    }
+  },
+
+  updateHBaseReplicationErrorCallback: function (data) {
+    var error = Em.I18n.t('services.service.actions.run.updateHBaseReplication.error');
+    if (data && data.responseText) {
+      try {
+        const json = JSON.parse(data.responseText);
+        error += json.message;
+      } catch (err) {
+        console.log(err);
+      }
+    }
+    App.showAlertPopup(Em.I18n.t('services.service.actions.run.updateHBaseReplication.error'), error);
+  },
+
+
+  /**
+   * On click handler for Stop HBase Replication command from items menu
+   */
+  stopHBaseReplication: function () {
+    const controller = this;
+    App.ModalPopup.show({
+      classNames: ['forty-percent-width-modal'],
+      header: Em.I18n.t('services.service.actions.run.stopHBaseReplication.context'),
+      primary: Em.I18n.t('common.start'),
+      secondary: Em.I18n.t('common.cancel'),
+      inputValue: '',
+      errorMessage: Em.I18n.t('services.service.actions.run.stopHBaseReplication.promptError'),
+      isInvalid: function () {
+        const inputValue = this.get('inputValue');
+        return !inputValue || isNaN(inputValue);
+      }.property('inputValue'),
+      disablePrimary: Em.computed.alias('isInvalid'),
+      onPrimary: function () {
+        if (this.get('isInvalid')) {
+          return;
+        }
+        App.ajax.send({
+          name: 'service.item.stopHBaseReplication',
+          sender: controller,
+          data: {
+            hosts: App.Service.find('HBASE').get('hostComponents').findProperty('componentName', 'HBASE_MASTER').get('hostName'),
+            replication_peers: this.get('inputValue')
+          },
+          success: 'stopHBaseReplicationSuccessCallback',
+          error: 'stopHBaseReplicationErrorCallback',
+          showLoadingPopup: true
+        });
+        this.hide();
+      },
+      bodyClass: Ember.View.extend({
+        templateName: require('templates/common/modal_popups/prompt_popup'),
+        text: Em.I18n.t('services.service.actions.run.stopHBaseReplication.prompt'),
+      })
+    });
+  },
+
+  stopHBaseReplicationSuccessCallback: function (data) {
+    if (data.Requests.id) {
+      App.router.get('backgroundOperationsController').showPopup();
+    }
+  },
+
+  stopHBaseReplicationErrorCallback: function (data) {
+    var error = Em.I18n.t('services.service.actions.run.stopHBaseReplication.error');
+    if (data && data.responseText) {
+      try {
+        const json = JSON.parse(data.responseText);
+        error += json.message;
+      } catch (err) {
+        console.log(err);
+      }
+    }
+    App.showAlertPopup(Em.I18n.t('services.service.actions.run.stopHBaseReplication.error'), error);
+  },
+
+
   restartAllHostComponents: function (serviceName) {
     const serviceDisplayName = this.get('content.displayName'),
       bodyMessage = Em.Object.create({
@@ -965,6 +1100,111 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
       }, bodyMessage);
     }
   },
+
+  restartServiceAllComponents: function () {
+    batchUtils.showServiceRestartPopup(this.get('content.serviceName'), this.getMastersForRestart.bind(this), this.getSlavesForRestart.bind(this));
+  },
+  restartServiceMastersOnly: function () {
+    batchUtils.showServiceRestartPopup(this.get('content.serviceName'), this.getMastersForRestart.bind(this), null);
+  },
+
+  restartServiceSlavesOnly: function () {
+    batchUtils.showServiceRestartPopup(this.get('content.serviceName'), null, this.getSlavesForRestart.bind(this));
+  },
+
+  restartOptions: [
+    Em.Object.create({
+      action: 'restartServiceAllComponents',
+      context: {
+        label: 'Restart All',
+        name: 'RESTART_ALL'
+      }
+    }),
+    Em.Object.create({
+      action: 'restartServiceMastersOnly',
+      context: {
+        label: 'Restart Masters',
+        name: 'RESTART_MASTERS'
+      }
+    }),
+    Em.Object.create({
+      action: 'restartServiceSlavesOnly',
+      context: {
+        label: 'Restart Slaves',
+        name: 'RESTART_SLAVES'
+      }
+    }),
+  ],
+
+  getMastersForRestart: function (serviceName) {
+    if (serviceName === 'HDFS') {
+      return this.getMastersForHdfsRestart();
+    } else {
+      return this.get('content.hostComponents').filter((component) => {
+        return component.get('service.serviceName') === serviceName && component.get('isMaster');
+      });
+    }
+  },
+
+  getMastersForHdfsRestart: function () {
+    const self = this;
+    let hostCompOrdered = [];
+    const hdfsService = App.HDFSService.find().toArray()[0];
+
+    if (App.get('isHAEnabled')) {
+      let journalNodes = this.get('content.hostComponents').filterProperty('componentName', 'JOURNALNODE');
+      //Restart journal nodes one by one
+      if (journalNodes && journalNodes.length) {
+        journalNodes.forEach((journalNode) => hostCompOrdered.push(journalNode));
+      }
+
+      //Restart Standby NN and then Standby ZKFC
+      const standbyNameNodes = hdfsService.get('standbyNameNodes').toArray();
+      if (standbyNameNodes.length > 0) {
+        hdfsService.get('standbyNameNodes').forEach(function (snn) {
+          hostCompOrdered.push(snn);
+          const snnHostName = snn.get('hostName');
+          const zkfcForSnn = self.get('content.hostComponents').filter((component) => {
+            return component.get('componentName') === 'ZKFC' && component.get('hostName') === snnHostName;
+          });
+          if (zkfcForSnn) {
+            hostCompOrdered.push(zkfcForSnn[0]);
+          }
+        });
+      }
+
+      //Restart Active NN and then Active ZKFC
+      const activeNameNodes = hdfsService.get('activeNameNodes').toArray();
+      if (activeNameNodes.length > 0) {
+        hdfsService.get('activeNameNodes').forEach(function (ann) {
+          hostCompOrdered.push(ann);
+          const annHostName = ann.get('hostName');
+          const zkfcForAnn = self.get('content.hostComponents').filter((component) => {
+            return component.get('componentName') === 'ZKFC' && component.get('hostName') === annHostName;
+          });
+          if (zkfcForAnn) {
+            hostCompOrdered.push(zkfcForAnn[0]);
+          }
+        });
+      }
+    } else {
+      //Add SNamenode
+      const sNameNode = hdfsService.get('snameNode') || App.HostComponent.find().findProperty('componentName', 'SECONDARY_NAMENODE')
+      if (sNameNode) hostCompOrdered.push(sNameNode);
+
+      //Add NameNode
+      const namenode = hdfsService.get('namenode') || App.HostComponent.find().findProperty('componentName', 'NAMENODE');
+      if (namenode) hostCompOrdered.push(namenode);
+    }
+    return hostCompOrdered;
+  },
+
+  getSlavesForRestart: function (serviceName) {
+    return this.get('content.hostComponents').filter((component) => {
+      return component.get('service.serviceName') === serviceName && component.get('isSlave');
+    });
+  },
+
 
   restartCertainHostComponents: function (context) {
     const serviceDisplayName = this.get('content.displayName'),
@@ -1176,10 +1416,21 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     return App.MasterComponent.find().toArray().concat(App.SlaveComponent.find().toArray()).filterProperty('service.serviceName', this.get('content.serviceName'));
   }.property('content.serviceName'),
 
-  isStartDisabled: Em.computed.or('isPending', 'content.isStarted'),
+  isStartDisabled: function () {
+    let allComponentsStarted = true;
+    if (this.get('isPending')) return true;
+    this.get('nonClientServiceComponents').forEach(function (component) {
+      if (component.get('installedCount') > 0)
+        allComponentsStarted = false;
+    });
+    return allComponentsStarted && this.get('content.isStarted');
+  }.property('content.isStarted', 'isPending'),
+
 
   isStopDisabled: function () {
+    let allComponentsStopped = true;
     if(this.get('isPending')) return true;
+
     if (App.get('isHaEnabled') && this.get('content.serviceName') == 'HDFS' && this.get('content.hostComponents').filterProperty('componentName', 'NAMENODE').someProperty('workStatus', App.HostComponentStatus.started)) {
       return false;
     }
@@ -1189,7 +1440,13 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     if (this.get('content.serviceName') == 'PXF' && App.HostComponent.find().filterProperty('componentName', 'PXF').someProperty('workStatus', App.HostComponentStatus.started)) {
       return false;
     }
-    return !this.get('content.isStarted');
+
+    this.get('nonClientServiceComponents').forEach(function (component) {
+      if (component.get('startedCount') > 0)
+        allComponentsStopped = false;
+    });
+
+    return allComponentsStopped && !this.get('content.isStarted');
   }.property('content.isStarted','isPending', 'App.isHaEnabled'),
 
   isSmokeTestDisabled: function () {
@@ -1259,6 +1516,11 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
   openNameNodeFederationWizard: function () {
     var highAvailabilityController = App.router.get('mainAdminHighAvailabilityController');
     highAvailabilityController.enableNameNodeFederation();
+  },
+
+  openRouterFederationWizard: function () {
+    var highAvailabilityController = App.router.get('mainAdminHighAvailabilityController');
+    highAvailabilityController.enableRouterFederation();
   },
 
   /**
@@ -1331,7 +1593,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     var error = Em.I18n.t('services.service.actions.run.executeCustomCommand.error');
     if(data && data.responseText){
       try {
-        var json = $.parseJSON(data.responseText);
+        var json = JSON.parse(data.responseText);
         error += json.message;
       } catch (err) {}
     }
@@ -1497,7 +1759,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     var self = this,
       displayName = App.format.role(serviceName, true),
       popupHeader = Em.I18n.t('services.service.delete.popup.header'),
-      popupPrimary = Em.I18n.t('common.delete'),
+      popupPrimary = Em.I18n.t('common.proceed'),
       warningMessage = Em.I18n.t('services.service.delete.popup.warning').format(displayName) +
         (interDependentServices.length ? Em.I18n.t('services.service.delete.popup.warning.dependent').format(dependentServicesToDeleteFmt) : ''),
       callback = this.loadConfigRecommendations.bind(this, null, function () {
@@ -1521,8 +1783,8 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
       primary: popupPrimary,
       primaryClass: 'btn-danger',
       disablePrimary: Em.computed.alias('controller.isRecommendationInProgress'),
-      classNameBindings: ['controller.changedProperties.length:common-modal-wrapper', 'controller.changedProperties.length:modal-full-width'],
-      modalDialogClasses: Em.computed.ifThenElse('controller.changedProperties.length', ['modal-lg'], []),
+      classNameBindings: ['controller.changedProperties.length:common-modal-wrapper'],
+      modalDialogClasses: Em.computed.ifThenElse('controller.changedProperties.length', ['modal-xlg'], []),
       bodyClass: Em.View.extend({
         templateName: require('templates/main/service/info/delete_service_warning_popup'),
         warningMessage: new Em.Handlebars.SafeString(warningMessage)
@@ -1795,6 +2057,7 @@ App.MainServiceItemController = Em.Controller.extend(App.SupportClientConfigsDow
     return App.ajax.send({
       name : 'common.delete.service',
       sender: this,
+      dataType:'text',
       data : {
         serviceName : serviceToDeleteNow,
         servicesToDeleteNext: servicesToDeleteNext

@@ -50,15 +50,36 @@ App.WizardStep6View = App.TableView.extend({
   didInsertElement: function () {
     this.setLabel();
     this.get('controller').loadStep();
+    this.$('.pre-scrollable').on('scroll', event => {
+      this.$('.pre-scrollable .freeze').css('transform', `translate(${event.target.scrollLeft}px,0)`);
+    });
     Em.run.next(this, this.adjustColumnWidth);
   },
 
-  adjustColumnWidth: function() {
-    const table = $('#component_assign_table');
-    const columnsCount = this.get('controller.headers.length');
-    if (table.width() > table.find('tbody').width()) {
-      const columnWidth = Math.floor(table.width() / columnsCount);
+  adjustColumnWidth: function () {
+    const table = $('#component_assign_table'),
+      tableWrapper = $('.pre-scrollable').first(),
+      tableCells = table.find('tbody > tr:first-of-type > td');
+    let cellsWidth = 0;
+    $.each(tableCells, (i, td) => cellsWidth += $(td).width());
+    if (tableWrapper.width() > cellsWidth) {
+      const columnsCount = this.get('controller.headers.length'),
+        hostColumnWidth = 210, // from ambari-web/app/styles/wizard.less
+        columnWidth = Math.floor((table.width() - hostColumnWidth) / columnsCount);
       table.find("th:not('.freeze'), td:not('.freeze')").width(columnWidth);
+      // a trick to keep checkbox abd label on the single line
+      table.find('.host-component-checkbox').css({
+        display: 'inline-block',
+        width: '0'
+      });
+    } else {
+      const tds = $('#component_assign_table > tbody > tr:first-of-type > td');
+      $.each(tds, (i, td) => {
+        const element = $(td),
+          className = element.attr('class'),
+          width = element.width();
+        $(`#component_assign_table th.${className}`).width(width);
+      });
     }
   },
 
@@ -68,7 +89,7 @@ App.WizardStep6View = App.TableView.extend({
    */
   setLabel: function () {
     var clients = this.get('controller.content.clients');
-    var label = !!clients.length ? Em.I18n.t('installer.step6.body') +  Em.I18n.t('installer.step6.body.clientText') : Em.I18n.t('installer.step6.body');
+    var label = !!clients.length ? Em.I18n.t('installer.step6.body') + Em.I18n.t('installer.step6.body.clientText') : Em.I18n.t('installer.step6.body');
 
     clients.forEach(function (_client) {
       if (clients.length === 1) {
@@ -88,17 +109,18 @@ App.WizardStep6View = App.TableView.extend({
     this.set('label', label);
   },
 
-  checkboxClick: function(e) {
-    var checkbox = e.context;
-    Em.set(checkbox, 'checked', !checkbox.checked);
+  checkboxClick: function (e) {
+    var checkbox = e.context, newCheckValue = !checkbox.checked;
+    Em.set(checkbox, 'checked', newCheckValue);
+    Em.run.next(() => {
+      var input = document.getElementById(checkbox.uId);
+      if (input && input.checked !== newCheckValue) {
+        input.checked = newCheckValue;
+      }
+    });
     this.get('controller').checkCallback(checkbox.component);
     this.get('controller').callValidation();
-  },
-
-  columnCount: function() {
-    var hosts = this.get('controller.hosts');
-    return hosts && hosts.length > 0 ? hosts[0].get('checkboxes').length + 1 : 1;
-  }.property('controller.hosts.@each.checkboxes')
+  }
 });
 
 App.WizardStep6HostView = Em.View.extend({
@@ -132,7 +154,7 @@ App.WizardStep6HostView = Em.View.extend({
     });
   },
 
-  willDestroyElement: function() {
+  willDestroyElement: function () {
     this.$().popover('destroy');
   }
 

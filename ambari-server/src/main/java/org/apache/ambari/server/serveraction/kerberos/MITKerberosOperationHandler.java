@@ -19,14 +19,17 @@
 package org.apache.ambari.server.serveraction.kerberos;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.security.credential.PrincipalKeyCredential;
+import org.apache.ambari.server.state.kerberos.VariableReplacementHelper;
 import org.apache.ambari.server.utils.ShellCommandUtil;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.directory.shared.kerberos.codec.types.EncryptionType;
 import org.slf4j.Logger;
@@ -47,6 +50,9 @@ public class MITKerberosOperationHandler extends KDCKerberosOperationHandler {
 
   @Inject
   private Configuration configuration;
+  
+  @Inject
+  private VariableReplacementHelper variableReplacementHelper;
 
   /**
    * A String containing user-specified attributes used when creating principals
@@ -241,7 +247,7 @@ public class MITKerberosOperationHandler extends KDCKerberosOperationHandler {
     }
 
     // Add explicit KDC admin host, if available
-    String adminSeverHost = getAdminServerHost();
+    String adminSeverHost = getAdminServerHost(true);
     if (!StringUtils.isEmpty(adminSeverHost)) {
       command.add("-s");
       command.add(adminSeverHost);
@@ -333,16 +339,30 @@ public class MITKerberosOperationHandler extends KDCKerberosOperationHandler {
   }
 
   @Override
-  protected String[] getKinitCommand(String executableKinit, PrincipalKeyCredential credentials, String credentialsCache) {
+  protected String[] getKinitCommand(String executableKinit, PrincipalKeyCredential credentials, String credentialsCache, Map<String, String> kerberosConfiguration) throws KerberosOperationException {
     // kinit -c <path> -S kadmin/`hostname -f` <principal>
-    return new String[]{
+    String kadminPrincipalName = variableReplacementHelper.replaceVariables(kerberosConfiguration.get(KERBEROS_ENV_KADMIN_PRINCIPAL_NAME), buildReplacementsMap(kerberosConfiguration));
+    if (kadminPrincipalName == null) {
+      kadminPrincipalName = String.format("kadmin/%s", getAdminServerHost(false));
+    }
+    String [] command = new String[]{
         executableKinit,
         "-c",
         credentialsCache,
         "-S",
-        String.format("kadmin/%s", getAdminServerHost()),
+        kadminPrincipalName,
         credentials.getPrincipal()
     };
+    if (Arrays.asList(command).contains(null)){
+      throw new KerberosOperationException("Got a null value, can not create 'kinit' command");
+    }
+    return command;
+  }
+
+  private Map<String, Map<String, String>> buildReplacementsMap(Map<String, String> kerberosConfiguration) {
+    final Map<String, Map<String, String>> replacementsMap = new HashMap<>();
+    replacementsMap.put("", kerberosConfiguration);
+    return replacementsMap;
   }
 
   @Override

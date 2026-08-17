@@ -15,23 +15,22 @@
    limitations under the License.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
   <parent>
     <groupId>org.apache.ambari</groupId>
     <artifactId>ambari-project</artifactId>
-    <version>2.0.0.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <relativePath>../../ambari-project</relativePath>
   </parent>
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.apache.ambari.contrib.mpacks</groupId>
   <artifactId>ambari-contrib-mpacks</artifactId>
   <packaging>pom</packaging>
-  <version>2.0.0.0-SNAPSHOT</version>
   <name>Ambari Contrib Management Packs</name>
   <properties>
-    <ambari.version>2.0.0.0-SNAPSHOT</ambari.version>
+    <ambari.version>${revision}</ambari.version>
     <ambari.dir>${project.parent.parent.basedir}</ambari.dir>
-    <hadoop.version>2.7.1</hadoop.version>
+    <hadoop.version>3.3.4</hadoop.version>
   </properties>
   <modules>
     <module>microsoft-r_mpack</module>
@@ -106,7 +105,6 @@
       <plugin>
         <groupId>org.vafer</groupId>
         <artifactId>jdeb</artifactId>
-        <version>1.0.1</version>
         <executions>
           <execution>
             <phase>none</phase>

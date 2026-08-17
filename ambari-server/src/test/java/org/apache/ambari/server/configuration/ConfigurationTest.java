@@ -30,13 +30,14 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Properties;
 
+import org.apache.ambari.annotations.ConfigurationMarkdown;
 import org.apache.ambari.annotations.Markdown;
 import org.apache.ambari.server.AmbariException;
-import org.apache.ambari.server.configuration.Configuration.ConfigurationMarkdown;
 import org.apache.ambari.server.configuration.Configuration.ConfigurationProperty;
 import org.apache.ambari.server.configuration.Configuration.ConnectionPoolType;
 import org.apache.ambari.server.configuration.Configuration.DatabaseType;
@@ -157,6 +158,16 @@ public class ConfigurationTest {
   }
 
   @Test
+  public void testGetMpacksV2StagingPath() {
+    Properties ambariProperties = new Properties();
+    ambariProperties.setProperty(Configuration.MPACKS_V2_STAGING_DIR_PATH.getKey(), "/var/lib/ambari-server/resources/mpacks-v2/");
+    Configuration conf = new Configuration(ambariProperties);
+    Assert.assertEquals("/var/lib/ambari-server/resources/mpacks-v2/", conf.getMpacksV2StagingPath());
+    conf = new Configuration();
+    Assert.assertEquals(null, conf.getMpacksV2StagingPath());
+  }
+
+  @Test
   public void testGetClientHTTPSSettings() throws IOException {
 
     File passFile = File.createTempFile("https.pass.", "txt");
@@ -164,7 +175,7 @@ public class ConfigurationTest {
 
     String password = "pass12345";
 
-    FileUtils.writeStringToFile(passFile, password);
+    FileUtils.writeStringToFile(passFile, password, Charset.defaultCharset());
 
     Properties ambariProperties = new Properties();
     ambariProperties.setProperty(Configuration.API_USE_SSL.getKey(), "true");
@@ -221,7 +232,7 @@ public class ConfigurationTest {
     String encrypted = "fake-encrypted-password";
     ambariProperties.setProperty(Configuration.SSL_TRUSTSTORE_PASSWORD.getKey(), unencrypted);
     Configuration conf = spy(new Configuration(ambariProperties));
-    PowerMock.stub(PowerMock.method(PasswordUtils.class, "readPasswordFromStore", String.class, File.class, boolean.class, File.class)).toReturn(null);
+    PowerMock.stub(PowerMock.method(PasswordUtils.class, "readPasswordFromStore", String.class, Configuration.class)).toReturn(null);
     conf.loadSSLParams();
     Assert.assertEquals(System.getProperty(Configuration.JAVAX_SSL_TRUSTSTORE_PASSWORD, "unknown"), unencrypted);
   }
@@ -233,7 +244,7 @@ public class ConfigurationTest {
     String encrypted = "fake-encrypted-password";
     ambariProperties.setProperty(Configuration.SSL_TRUSTSTORE_PASSWORD.getKey(), unencrypted);
     Configuration conf = spy(new Configuration(ambariProperties));
-    PowerMock.stub(PowerMock.method(PasswordUtils.class, "readPasswordFromStore", String.class, File.class, boolean.class, File.class)).toReturn(encrypted);
+    PowerMock.stub(PowerMock.method(PasswordUtils.class, "readPasswordFromStore", String.class, Configuration.class)).toReturn(encrypted);
     conf.loadSSLParams();
     Assert.assertEquals(System.getProperty(Configuration.JAVAX_SSL_TRUSTSTORE_PASSWORD, "unknown"), encrypted);
   }
@@ -279,7 +290,7 @@ public class ConfigurationTest {
       passwordFile);
 
     Configuration conf = new Configuration(ambariProperties);
-    PowerMock.stub(PowerMock.method(PasswordUtils.class,"readPasswordFromStore", String.class, File.class, boolean.class, File.class)).toReturn(null);
+    PowerMock.stub(PowerMock.method(PasswordUtils.class,"readPasswordFromStore", String.class, Configuration.class)).toReturn(null);
 
     Assert.assertEquals("ambaritest", conf.getDatabasePassword());
   }
@@ -965,5 +976,32 @@ public class ConfigurationTest {
     } catch (NumberFormatException e) {
       // This is expected
     }
+  }
+
+  @Test
+  public void testServerShowErrorStacksEnabled() throws  Exception {
+    // given
+    final Properties ambariProperties = new Properties();
+    ambariProperties.setProperty(Configuration.SERVER_SHOW_ERROR_STACKS.getKey(), "true");
+    final Configuration configuration = new Configuration(ambariProperties);
+
+    // when
+    boolean result = configuration.isServerShowErrorStacks();
+
+    // then
+    Assert.assertTrue(result);
+  }
+
+  @Test
+  public void testServerShowErrorStacksDefault() throws  Exception {
+    // given
+    final Properties ambariProperties = new Properties();
+    final Configuration configuration = new Configuration(ambariProperties);
+
+    // when
+    boolean result = configuration.isServerShowErrorStacks();
+
+    // then
+    Assert.assertEquals(result, Boolean.parseBoolean(Configuration.SERVER_SHOW_ERROR_STACKS.getDefaultValue()));
   }
 }

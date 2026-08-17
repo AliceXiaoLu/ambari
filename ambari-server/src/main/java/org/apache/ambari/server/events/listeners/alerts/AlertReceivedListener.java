@@ -66,7 +66,6 @@ import com.google.common.util.concurrent.Striped;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.Singleton;
-import com.google.inject.persist.Transactional;
 
 /**
  * The {@link AlertReceivedListener} class handles {@link AlertReceivedEvent}
@@ -254,6 +253,14 @@ public class AlertReceivedListener {
 
           // create the event to fire later
           alertEvents.add(new InitialAlertEvent(clusterId, alert, current));
+
+          if (!alertUpdates.containsKey(clusterId)) {
+            alertUpdates.put(clusterId, new HashMap<>());
+          }
+          Map<String, AlertSummaryGroupedRenderer.AlertDefinitionSummary> summaries = alertUpdates.get(clusterId);
+
+          AlertSummaryGroupedRenderer.updateSummary(summaries, definition.getDefinitionId(),
+              definition.getDefinitionName(), alertState, alert.getTimestamp(), maintenanceState, alert.getText());
         } finally {
           // release the lock for this alert
           lock.unlock();
@@ -377,7 +384,7 @@ public class AlertReceivedListener {
 
     // invokes the EntityManager create/merge on various entities in a single
     // transaction
-    saveEntities(toMerge, toCreateHistoryAndMerge);
+    m_alertsDao.saveEntities(toMerge, toCreateHistoryAndMerge);
 
     // broadcast events
     for (AlertEvent eventToFire : alertEvents) {
@@ -434,32 +441,6 @@ public class AlertReceivedListener {
     } else {
       return m_alertsDao.findCurrentByHostAndName(clusterId, alert.getHostName(),
         alert.getName());
-    }
-  }
-
-  /**
-   * Saves alert and alert history entities in single transaction
-   * @param toMerge - merge alert only
-   * @param toCreateHistoryAndMerge - create new history, merge alert
-   */
-  @Transactional
-  void saveEntities(List<AlertCurrentEntity> toMerge,
-      List<AlertCurrentEntity> toCreateHistoryAndMerge) {
-    for (AlertCurrentEntity entity : toMerge) {
-      m_alertsDao.merge(entity, m_configuration.isAlertCacheEnabled());
-    }
-
-    for (AlertCurrentEntity entity : toCreateHistoryAndMerge) {
-      m_alertsDao.create(entity.getAlertHistory());
-      m_alertsDao.merge(entity);
-
-      if (LOG.isDebugEnabled()) {
-        LOG.debug(
-            "Alert State Merged: CurrentId {}, CurrentTimestamp {}, HistoryId {}, HistoryState {}",
-            entity.getAlertId(), entity.getLatestTimestamp(),
-            entity.getAlertHistory().getAlertId(),
-            entity.getAlertHistory().getAlertState());
-      }
     }
   }
 

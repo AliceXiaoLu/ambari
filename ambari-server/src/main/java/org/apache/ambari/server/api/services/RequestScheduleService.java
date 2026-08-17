@@ -20,28 +20,29 @@ package org.apache.ambari.server.api.services;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.ws.rs.DELETE;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
 import org.apache.ambari.server.api.resources.ResourceInstance;
 import org.apache.ambari.server.controller.RequestScheduleResponseSwagger;
 import org.apache.ambari.server.controller.spi.Resource;
-
 import org.apache.http.HttpStatus;
 
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 
@@ -78,7 +79,6 @@ public class RequestScheduleService extends BaseService {
    * @return
    */
   @GET
-  @Path("") // This is needed if class level path is not present otherwise no Swagger docs will be generated for this method
   @Produces(MediaType.TEXT_PLAIN)
   @ApiOperation(value = "Get all request schedules", response = RequestScheduleResponseSwagger.class, responseContainer =
           RESPONSE_CONTAINER_LIST)
@@ -141,7 +141,6 @@ public class RequestScheduleService extends BaseService {
    * @return
    */
   @POST
-  @Path("") // This is needed if class level path is not present otherwise no Swagger docs will be generated for this method
   @Produces(MediaType.TEXT_PLAIN)
   @ApiOperation(value = "Create new request schedule")
   @ApiImplicitParams({
@@ -161,6 +160,38 @@ public class RequestScheduleService extends BaseService {
                                         @Context UriInfo ui) {
     return handleRequest(headers, body, ui, Request.Type.POST,
       createRequestSchedule(m_clusterName, null));
+  }
+
+
+  /**
+   * Handles URL: /clusters/{clusterId}/request_schedules/{requestScheduleId}
+   * Get details on a specific request schedule
+   *
+   * @return
+   */
+
+  @PUT
+  @Path("{requestScheduleId}")
+  @Produces(MediaType.TEXT_PLAIN)
+  @ApiOperation(value = "Updates a scheduled request, usually used to pause running scheduled requests or to resume them.",
+    notes = "Changes the state of an existing request. Usually used to pause running scheduled requests or to resume them.",
+    nickname = "RequestSchedules#updateRequestSchedule"
+  )
+  @ApiImplicitParams({
+    @ApiImplicitParam(dataType = REQUEST_SCHEDULE_REQUEST_TYPE, paramType = PARAM_TYPE_BODY)
+  })
+  @ApiResponses({
+    @ApiResponse(code = HttpStatus.SC_OK, message = MSG_SUCCESSFUL_OPERATION),
+    @ApiResponse(code = HttpStatus.SC_ACCEPTED, message = MSG_REQUEST_ACCEPTED),
+    @ApiResponse(code = HttpStatus.SC_BAD_REQUEST, message = MSG_INVALID_ARGUMENTS),
+    @ApiResponse(code = HttpStatus.SC_NOT_FOUND, message = MSG_RESOURCE_NOT_FOUND),
+    @ApiResponse(code = HttpStatus.SC_UNAUTHORIZED, message = MSG_NOT_AUTHENTICATED),
+    @ApiResponse(code = HttpStatus.SC_FORBIDDEN, message = MSG_PERMISSION_DENIED),
+    @ApiResponse(code = HttpStatus.SC_INTERNAL_SERVER_ERROR, message = MSG_SERVER_ERROR),
+  })
+  public Response updateRequestSchedule(String body, @Context HttpHeaders headers, @Context UriInfo ui,
+                                 @ApiParam @PathParam("requestScheduleId") String requestScheduleId) {
+    return handleRequest(headers, body, ui, Request.Type.PUT, createRequestSchedule(m_clusterName, requestScheduleId));
   }
 
   /**

@@ -331,9 +331,17 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    */
   loadRepoInfo: function () {
     var stackName = App.get('currentStackName');
-    var currentStackVersionNumber = App.get('currentStackVersionNumber');
-    var currentStackVersion = App.StackVersion.find().filterProperty('stack', stackName).findProperty('version', currentStackVersionNumber);
-    var currentRepoVersion = currentStackVersion.get('repositoryVersion.repositoryVersion');
+
+    var currentRepoVersion;
+    App.RepositoryVersion.find().forEach(function (repoVersion) {
+      if (repoVersion.get('stackVersionType') === stackName && repoVersion.get('isCurrent') && repoVersion.get('isStandard')) {
+        currentRepoVersion = repoVersion.get('repositoryVersion');
+      }
+    });
+
+    if (!currentRepoVersion) {
+      console.error('Error while getting current stack repository version');
+    }
 
     return App.ajax.send({
       name: 'cluster.load_repo_version',
@@ -575,7 +583,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
       this.set('isSubmitDisabled', true);
       this.set('isBackBtnDisabled', true);
       this.showRestartWarnings()
-        .then(this.checkKDCSession.bind(this));
+        .done(this.checkKDCSession.bind(this));
     }
   },
 
@@ -689,7 +697,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
     // delete any existing clusters to start from a clean slate
     // before creating a new cluster in install wizard
     // TODO: modify for multi-cluster support
-    this.getExistingClusterNames().complete(function () {
+    this.getExistingClusterNames().then(function () {
       var clusterNames = self.get('clusterNames');
       if (self.get('isInstaller') && !App.get('testMode') && clusterNames.length) {
         self.deleteClusters(clusterNames);
@@ -782,7 +790,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
   deleteClusterErrorCallback: function (request, ajaxOptions, error, opt) {
     this.incrementProperty('clusterDeleteRequestsCompleted');
     try {
-      var json = $.parseJSON(request.responseText);
+      var json = JSON.parse(request.responseText);
       var message = json.message;
     } catch (err) {
     }
@@ -885,6 +893,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
 
     var ajaxOpts = {
       name: descriptorExists ? 'admin.kerberos.cluster.artifact.update' : 'admin.kerberos.cluster.artifact.create',
+      dataType:'text',
       data: {
         artifactName: 'kerberos_descriptor',
         data: {
@@ -1031,7 +1040,7 @@ App.WizardStep8Controller = Em.Controller.extend(App.AddSecurityConfigs, App.wiz
    * @method createComponents
    */
   createComponents: function () {
-    var serviceComponents = App.StackServiceComponent.find();
+    var serviceComponents = App.StackServiceComponent.find().filterProperty('isInstallable');
     this.get('selectedServices').forEach(function (_service) {
       var serviceName = _service.get('serviceName');
       var componentsData = serviceComponents.filterProperty('serviceName', serviceName).map(function (_component) {

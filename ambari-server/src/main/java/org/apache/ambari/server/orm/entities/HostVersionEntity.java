@@ -18,20 +18,22 @@
 
 package org.apache.ambari.server.orm.entities;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.UniqueConstraint;
+import java.util.Objects;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.Table;
+import jakarta.persistence.TableGenerator;
+import jakarta.persistence.UniqueConstraint;
 
 import org.apache.ambari.server.state.RepositoryVersionState;
 
@@ -201,7 +203,7 @@ public class HostVersionEntity {
     }
 
     HostVersionEntity other = (HostVersionEntity) obj;
-    if (id != null ? id != other.id : other.id != null) {
+    if (!Objects.equals(id, other.id)) {
       return false;
     }
     if (hostEntity != null ? !hostEntity.equals(other.hostEntity) : other.hostEntity != null) {

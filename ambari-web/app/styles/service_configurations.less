@@ -44,6 +44,9 @@
   .comparison-row {
     margin-left: -25px;
     padding: 10px 0;
+    .compare-config-cell {
+      white-space: pre;
+    }
   }
 
   .undefined {
@@ -102,6 +105,10 @@
             margin-left: -14px;
           }
         }
+      }
+      .ember-text-area {
+        min-width: 450px;
+        max-width: 100%;
       }
     }
     .entry-row.indent-1 {
@@ -321,6 +328,9 @@
   .config-controls {
     line-height: 34px;
     vertical-align: top;
+    a:hover {
+      text-decoration: none;
+    }
   }
   .clear-left{
     clear:left;
@@ -365,6 +375,7 @@
 .password-field-wrapper {
   width: 75%;
   display: inline-block;
+  float: left;
   .row {
     padding: 0;
   }

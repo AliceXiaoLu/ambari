@@ -19,21 +19,23 @@
 package org.apache.ambari.server.security.authentication.kerberos;
 
 import static org.easymock.EasyMock.anyObject;
+import static org.easymock.EasyMock.anyString;
 import static org.easymock.EasyMock.capture;
 import static org.easymock.EasyMock.eq;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.expectLastCall;
 import static org.easymock.EasyMock.getCurrentArguments;
 import static org.easymock.EasyMock.newCapture;
+import static org.easymock.EasyMock.startsWith;
 
 import java.io.IOException;
 import java.util.List;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.security.AmbariEntryPoint;
@@ -150,8 +152,11 @@ public class AmbariKerberosAuthenticationFilterTest extends EasyMockSupport {
     FilterChain filterChain = createMock(FilterChain.class);
 
     expect(request.getHeader("Authorization")).andReturn("Negotiate ").once();
+    expect(request.getHeader(startsWith("X-Forwarded-"))).andReturn(null).times(6);
     expect(request.getRemoteAddr()).andReturn("1.2.3.4").once();
     expect(request.getSession(false)).andReturn(session).once();
+    expect(request.getQueryString()).andReturn(null).once();
+    expect(request.getParameter(anyString())).andReturn(null).anyTimes();
     expect(session.getId()).andReturn("sessionID").once();
 
     expect(authenticationManager.authenticate(anyObject(Authentication.class)))
@@ -197,8 +202,11 @@ public class AmbariKerberosAuthenticationFilterTest extends EasyMockSupport {
     FilterChain filterChain = createMock(FilterChain.class);
 
     expect(request.getHeader("Authorization")).andReturn("Negotiate ").once();
+    expect(request.getHeader(startsWith("X-Forwarded-"))).andReturn(null).times(6);
     expect(request.getRemoteAddr()).andReturn("1.2.3.4").once();
     expect(request.getSession(false)).andReturn(session).once();
+    expect(request.getQueryString()).andReturn(null).once();
+    expect(request.getParameter(anyString())).andReturn(null).anyTimes();
     expect(session.getId()).andReturn("sessionID").once();
 
     expect(authenticationManager.authenticate(anyObject(Authentication.class))).andThrow(new InvalidUsernamePasswordCombinationException("user")).once();

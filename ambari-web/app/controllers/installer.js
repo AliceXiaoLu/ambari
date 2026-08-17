@@ -144,7 +144,7 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
     var self = this;
     var stackServices = App.StackService.find().mapProperty('serviceName');
     if (!(stackServices.length && App.StackService.find().objectAt(0).get('stackVersion') === App.get('currentStackVersionNumber'))) {
-      this.loadServiceComponents().complete(function () {
+      this.loadServiceComponents().then(function () {
         self.set('content.services', App.StackService.find().forEach(function (item) {
           // user the service version from VersionDefinition
           var serviceInStack = App.Stack.find().findProperty('isSelected').get('stackServices').findProperty('name', item.get('serviceName'));
@@ -157,21 +157,6 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
       dfd.resolve();
     }
     return dfd.promise();
-  },
-
-  /**
-   * TODO remove when functionality to skip master components ready
-   * @param jsonData
-   */
-  loadServiceComponentsSuccessCallback: function(jsonData) {
-    if (App.Stack.find().findProperty('isSelected', true).get('stackName') === 'HDF') {
-      jsonData.items.forEach((service) => {
-        service.components = service.components.reject((component) => {
-          return ['ACTIVITY_ANALYZER', 'ACTIVITY_EXPLORER'].contains(component.StackServiceComponents.component_name);
-        });
-      });
-    }
-    this._super(jsonData);
   },
 
   /**
@@ -254,7 +239,7 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
         sender: this,
         success: 'loadStacksSuccessCallback',
         error: 'loadStacksErrorCallback'
-      }).complete(function () {
+      }).then(function () {
         dfd.resolve(false);
       });
     }
@@ -320,16 +305,25 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
         }
       }, this);
     }
-
-    data.items.sortProperty('VersionDefinition.stack_version').reverse().forEach(function (versionDefinition) {
-      // to display repos panel, should map all available operating systems including empty ones
-      var stackInfo = {};
-      stackInfo.isStacksExistInDb = isStacksExistInDb;
-      stackInfo.stacks = stacks;
-      stackInfo.oses = oses;
-      stackInfo.repos = repos;
-      this.getSupportedOSList(versionDefinition, stackInfo, params.dfd);
-    }, this);
+    if (!data.items || !data.items.length) {
+      this.setSelected(true, params.dfd);
+    }
+    // if data.items is empty, we show error modal end return to back step
+    if (data.items && data.items.length) {
+      data.items.sortProperty('VersionDefinition.stack_version').reverse().forEach(function (versionDefinition) {
+        // to display repos panel, should map all available operating systems including empty ones
+        var stackInfo = {};
+        stackInfo.isStacksExistInDb = isStacksExistInDb;
+        stackInfo.stacks = stacks;
+        stackInfo.oses = oses;
+        stackInfo.repos = repos;
+        this.getSupportedOSList(versionDefinition, stackInfo, params.dfd);
+      }, this);
+    } else {
+      App.showAlertPopup(Em.I18n.t('common.error'), Em.I18n.t('installer.step1.noVersionDefinitions'), function() {
+        App.router.send('back');
+      });
+    }
   },
 
   mergeChanges: function (repos, oses, stacks) {
@@ -366,9 +360,10 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
       stacks.setEach('isSelected', false);
       stacks.sortProperty('id').set('lastObject.isSelected', true);
     }
-    dfd.resolve();
     this.set('content.stacks', App.Stack.find());
-    App.set('currentStackVersion', App.Stack.find().findProperty('isSelected').get('stackNameVersion'));
+    var selected = App.Stack.find().findProperty('isSelected');
+    App.set('currentStackVersion', selected ? selected.get('stackNameVersion') : null);
+    dfd.resolve();
   },
 
   /**
@@ -693,7 +688,7 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
     var body = '';
     if(request && request.responseText) {
       try {
-        var json = $.parseJSON(request.responseText);
+        var json = JSON.parse(request.responseText);
         body = json.message;
       } catch (err) {}
     }
@@ -718,6 +713,23 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
     });
   },
 
+  showStackErrorAndSkipStepIfNeeded: function (response) {
+    var stackName = response.Versions.stack_name;
+    var stackVersion = response.Versions.stack_version;
+    var header = Em.I18n.t('installer.step1.useLocalRepo.getSurpottedOs.stackError.title').format(stackName, stackVersion);
+    var body = response.Versions['stack-errors'].join('. ');
+    this.decrementProperty('loadStacksRequestsCounter');
+    App.showAlertPopup(header, body);
+    if (this.get('loadStacksRequestsCounter') === 0 && !App.Stack.find().toArray().length) {
+      var wizardStep0Controller = App.router.get('wizardStep0Controller');
+      wizardStep0Controller.set('hasNotStacksAvailable', true);
+      App.router.send('gotoStep' + 0);
+      var installationErrorHeader = Em.I18n.t('installer.step1.useLocalRepo.getSurpottedOs.noStacksError.title');
+      var installationErrorBody = Em.I18n.t('installer.step1.useLocalRepo.getSurpottedOs.noStacksError.body');
+      App.showAlertPopup(installationErrorHeader, installationErrorBody);
+    }
+  },
+
   /**
    * onSuccess callback for getSupportedOSList.
    */
@@ -730,6 +742,10 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
       existedOS.isSelected = true;
       existedMap[existedOS.OperatingSystems.os_type] = existedOS;
     });
+    if (response.Versions && response.Versions['stack-errors'] && response.Versions['stack-errors'].length) {
+      this.showStackErrorAndSkipStepIfNeeded(response);
+      return;
+    }
     response.operating_systems.forEach(function(supportedOS) {
       if(!existedMap[supportedOS.OperatingSystems.os_type]) {
         supportedOS.isSelected = false;
@@ -793,7 +809,7 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
     var body = "";
     if(request && request.responseText){
       try {
-        var json = $.parseJSON(request.responseText);
+        var json = JSON.parse(request.responseText);
         body = json.message;
       } catch (err) {}
     }
@@ -878,8 +894,10 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
       if (!verifyBaseUrl) {
         dfd.resolve();
       }
+      //for redhat satellite/spacewalk the os urls will be empty
+      var useRedhatSatellite = wizardStep1Controller.get('selectedStack.useRedhatSatellite');
       selectedStack.get('operatingSystems').forEach(function (os) {
-        if (os.get('isSelected') && !os.get('isEmpty')) {
+        if (os.get('isSelected') && (useRedhatSatellite || !os.get('isEmpty'))) {
           os.get('repositories').forEach(function (repo) {
             if (repo.get('showRepo')) {
               repo.setProperties({
@@ -890,6 +908,7 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
               this.set('content.isCheckInProgress', true);
               App.ajax.send({
                 name: 'wizard.advanced_repositories.valid_url',
+                dataType:'text',
                 sender: this,
                 data: {
                   stackName: stackName,
@@ -946,10 +965,15 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
       var os = selectedStack.get('operatingSystems').findProperty('id', params.osId);
       var repo = os.get('repositories').findProperty('repoId', params.repoId);
       if (repo) {
+        var title = Ember.Handlebars.Utils.escapeExpression(request.status + ":" + request.statusText);
+        var content = "";
+        try {
+          content = JSON.parse(request.responseText);
+        } catch (error) {}
         repo.setProperties({
           validation: 'INVALID',
-          errorTitle: request.status + ":" + request.statusText,
-          errorContent: $.parseJSON(request.responseText) ? $.parseJSON(request.responseText).message : ""
+          errorTitle: title,
+          errorContent: content
         });
       }
     }
@@ -1055,7 +1079,7 @@ App.InstallerController = App.WizardController.extend(App.Persist, {
           this.loadCurrentHostGroups();
           this.loadRecommendationsConfigs();
           this.loadComponentsFromConfigs();
-          this.loadConfigThemes().then(function() {
+          this.loadConfigThemes().done(function() {
             self.loadServiceConfigProperties();
             dfd.resolve();
           });

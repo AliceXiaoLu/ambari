@@ -21,29 +21,32 @@ package org.apache.ambari.server.api.services.views;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.ws.rs.DELETE;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.PUT;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
 import org.apache.ambari.server.api.resources.ResourceInstance;
 import org.apache.ambari.server.api.services.BaseService;
 import org.apache.ambari.server.api.services.Request;
+import org.apache.ambari.server.api.services.Result;
+import org.apache.ambari.server.api.services.ResultImpl;
+import org.apache.ambari.server.api.services.ResultStatus;
+import org.apache.ambari.server.api.services.serializers.JsonSerializer;
 import org.apache.ambari.server.controller.ViewInstanceResponse;
 import org.apache.ambari.server.controller.spi.Resource;
 import org.apache.ambari.server.orm.entities.ViewInstanceEntity;
 import org.apache.ambari.server.security.authorization.AuthorizationException;
 import org.apache.ambari.server.view.ViewRegistry;
-
 import org.apache.http.HttpStatus;
 
 import io.swagger.annotations.Api;
@@ -95,9 +98,10 @@ public class ViewInstanceService extends BaseService {
     @ApiResponse(code = HttpStatus.SC_INTERNAL_SERVER_ERROR, message = MSG_SERVER_ERROR),
     @ApiResponse(code = HttpStatus.SC_BAD_REQUEST, message = MSG_INVALID_ARGUMENTS),
   })
-  public Response getServices(String body, @Context HttpHeaders headers, @Context UriInfo ui,
-    @PathParam("viewName") String viewName, @PathParam("version") String version) throws AuthorizationException {
-    return handleRequest(headers, body, ui, Request.Type.GET, createResource(viewName, version, null));
+  public Response getServices(@Context HttpHeaders headers, @Context UriInfo ui,
+                              @PathParam("viewName") String viewName,
+                              @PathParam("version") String version) throws AuthorizationException {
+    return handleRequest(headers, null, ui, Request.Type.GET, createResource(viewName, version, null));
   }
 
   /**
@@ -127,10 +131,11 @@ public class ViewInstanceService extends BaseService {
     @ApiResponse(code = HttpStatus.SC_INTERNAL_SERVER_ERROR, message = MSG_SERVER_ERROR),
     @ApiResponse(code = HttpStatus.SC_BAD_REQUEST, message = MSG_INVALID_ARGUMENTS),
   })
-  public Response getService(String body, @Context HttpHeaders headers, @Context UriInfo ui,
-    @ApiParam(value = "view name") @PathParam("viewName") String viewName, @PathParam("version") String version,
-    @ApiParam(value = "instance name") @PathParam("instanceName") String instanceName) throws AuthorizationException {
-    return handleRequest(headers, body, ui, Request.Type.GET, createResource(viewName, version, instanceName));
+  public Response getService(@Context HttpHeaders headers, @Context UriInfo ui,
+                             @ApiParam(value = "view name") @PathParam("viewName") String viewName,
+                             @PathParam("version") String version,
+                             @ApiParam(value = "instance name") @PathParam("instanceName") String instanceName) throws AuthorizationException {
+    return handleRequest(headers, null, ui, Request.Type.GET, createResource(viewName, version, instanceName));
   }
 
   /**
@@ -305,7 +310,7 @@ public class ViewInstanceService extends BaseService {
    * @return the service
    */
   @Path("{instanceName}/{resources}")
-  public Object getResourceHandler(@Context javax.ws.rs.core.Request request,
+  public Object getResourceHandler(@Context jakarta.ws.rs.core.Request request,
                                    @PathParam("viewName") String viewName, @PathParam("version") String version,
                                    @PathParam("instanceName") String instanceName,
                                    @PathParam("resources") String resources) {
@@ -316,17 +321,145 @@ public class ViewInstanceService extends BaseService {
         ViewRegistry.getInstance().getInstanceDefinition(viewName, version, instanceName);
 
     if (instanceDefinition == null) {
-      throw new IllegalArgumentException("A view instance " +
-          viewName + "/" + instanceName + " can not be found.");
+      String msg = "A view instance " +
+          viewName + "/" + instanceName + " can not be found.";
+
+      return new NotFoundResponse(msg);
     }
 
     Object service = instanceDefinition.getService(resources);
 
     if (service == null) {
-      throw new IllegalArgumentException("A resource type " + resources + " for view instance " +
-          viewName + "/" + instanceName + " can not be found.");
+      String msg = "A resource type " + resources + " for view instance " +
+          viewName + "/" + instanceName + " can not be found.";
+      return new NotFoundResponse(msg);
     }
     return service;
+  }
+
+  /**
+   * Stub class for 404 error response
+   *
+   */
+  @Path("/")
+  public class NotFoundResponse {
+
+    String msg;
+
+    NotFoundResponse(String msg){
+      this.msg=msg;
+    }
+
+    /**
+     * Handles: GET /{resourceName}
+     * Handle GET resource with 404 response
+     * @return 404 response with msg
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @ApiOperation(value = "Handle GET resource with 404 response")
+    public Response get() {
+      return getResponse();
+    }
+
+    /**
+     * Handles: POST /{resourceName}
+     * Handle POST resource with 404 response
+     * @return 404 response with msg
+     */
+    @POST
+    @Produces(MediaType.TEXT_PLAIN)
+    @ApiOperation(value = "Handle POST resource with 404 response")
+    public Response post() {
+      return getResponse();
+    }
+
+    /**
+     * Handles: PUT /{resourceName}
+     * Handle PUT resource with 404 response
+     * @return 404 response with msg
+     */
+    @PUT
+    @Produces(MediaType.TEXT_PLAIN)
+    @ApiOperation(value = "Handle PUT resource with 404 response")
+    public Response put() {
+      return getResponse();
+    }
+
+    /**
+     * Handles: DELETE /{resourceName}
+     * Handle DELETE resource with 404 response
+     * @return 404 response with msg
+     */
+    @DELETE
+    @Produces(MediaType.TEXT_PLAIN)
+    @ApiOperation(value = "Handle DELETE resource with 404 response")
+    public Response delete() {
+      return getResponse();
+    }
+
+    /**
+     * Handles: GET /{resourceName}/{.*}
+     * Handle GET sub-resource with 404 response
+     * @return 404 response with msg
+     */
+    @GET
+    @Path("{path: .*}")
+    @Produces(MediaType.TEXT_PLAIN)
+    @ApiOperation(value = "Handle GET sub-resource with 404 response")
+    public Response getSub() {
+      return getResponse();
+    }
+
+    /**
+     * Handles: POST /{resourceName}/{.*}
+     * Handle POST sub-resource with 404 response
+     * @return 404 response with msg
+     */
+    @POST
+    @Path("{path: .*}")
+    @Produces(MediaType.TEXT_PLAIN)
+    @ApiOperation(value = "Handle POST sub-resource with 404 response")
+    public Response postSub() {
+      return getResponse();
+    }
+
+    /**
+     * Handles: PUT /{resourceName}/{.*}
+     * Handle PUT sub-resource with 404 response
+     * @return 404 response with msg
+     */
+    @PUT
+    @Path("{path: .*}")
+    @Produces(MediaType.TEXT_PLAIN)
+    @ApiOperation(value = "Handle PUT sub-resource with 404 response")
+    public Response putSub() {
+      return getResponse();
+    }
+
+    /**
+     * Handles: DELETE /{resourceName}/{.*}
+     * Handle DELETE sub-resource with 404 response
+     * @return 404 response with msg
+     */
+    @DELETE
+    @Path("{path: .*}")
+    @Produces(MediaType.TEXT_PLAIN)
+    @ApiOperation(value = "Handle DELETE sub-resource with 404 response")
+    public Response deleteSub() {
+      return getResponse();
+    }
+
+    /**
+     * Build 404 response with msg
+     * @return 404 response with msg
+     */
+    public Response getResponse() {
+      Result result = new ResultImpl(new ResultStatus(ResultStatus.STATUS.NOT_FOUND, msg));
+      Response.ResponseBuilder builder = Response.status(result.getStatus().getStatusCode()).entity(new JsonSerializer().serialize(result));
+      return builder.build();
+    }
+
   }
 
   // ----- helper methods ----------------------------------------------------

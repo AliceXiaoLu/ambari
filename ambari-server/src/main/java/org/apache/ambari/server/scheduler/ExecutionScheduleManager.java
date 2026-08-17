@@ -18,6 +18,9 @@
 
 package org.apache.ambari.server.scheduler;
 
+import static org.apache.ambari.server.state.scheduler.RequestExecution.Status.ABORTED;
+import static org.apache.ambari.server.state.scheduler.RequestExecution.Status.PAUSED;
+import static org.apache.ambari.server.state.scheduler.RequestExecution.Status.SCHEDULED;
 import static org.quartz.CronScheduleBuilder.cronSchedule;
 import static org.quartz.JobBuilder.newJob;
 import static org.quartz.SimpleScheduleBuilder.simpleSchedule;
@@ -29,6 +32,7 @@ import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.text.ParseException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -37,16 +41,31 @@ import java.util.ListIterator;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.ClientBuilder;
+import jakarta.ws.rs.client.ClientRequestFilter;
+import jakarta.ws.rs.client.Entity;
+import jakarta.ws.rs.client.Invocation;
+import jakarta.ws.rs.client.WebTarget;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.actionmanager.ActionDBAccessor;
 import org.apache.ambari.server.actionmanager.HostRoleStatus;
 import org.apache.ambari.server.configuration.Configuration;
+import org.apache.ambari.server.controller.internal.AbstractControllerResourceProvider;
+import org.apache.ambari.server.controller.internal.RequestImpl;
+import org.apache.ambari.server.controller.internal.RequestResourceProvider;
+import org.apache.ambari.server.controller.spi.Predicate;
+import org.apache.ambari.server.controller.spi.RequestStatus;
+import org.apache.ambari.server.controller.spi.Resource;
+import org.apache.ambari.server.controller.spi.ResourceProvider;
+import org.apache.ambari.server.controller.utilities.PredicateBuilder;
 import org.apache.ambari.server.security.authorization.internal.InternalTokenClientFilter;
 import org.apache.ambari.server.security.authorization.internal.InternalTokenStorage;
 import org.apache.ambari.server.state.Cluster;
@@ -61,6 +80,8 @@ import org.apache.ambari.server.state.scheduler.Schedule;
 import org.apache.ambari.server.utils.DateUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.text.StrBuilder;
+import org.glassfish.jersey.client.ClientConfig;
+import org.glassfish.jersey.client.filter.CsrfProtectionFilter;
 import org.quartz.CronExpression;
 import org.quartz.JobDetail;
 import org.quartz.JobExecutionContext;
@@ -74,15 +95,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.sun.jersey.api.client.Client;
-import com.sun.jersey.api.client.ClientResponse;
-import com.sun.jersey.api.client.UniformInterfaceException;
-import com.sun.jersey.api.client.WebResource;
-import com.sun.jersey.api.client.config.ClientConfig;
-import com.sun.jersey.api.client.config.DefaultClientConfig;
-import com.sun.jersey.api.client.filter.ClientFilter;
-import com.sun.jersey.api.client.filter.CsrfProtectionFilter;
-import com.sun.jersey.client.urlconnection.HTTPSProperties;
 
 /**
  * This class handles scheduling request execution for managed clusters
@@ -108,7 +120,7 @@ public class ExecutionScheduleManager {
   public static final String USER_ID_HEADER = "X-Authenticated-User-ID";
 
   protected Client ambariClient;
-  protected WebResource ambariWebResource;
+  protected WebTarget ambariWebResource;
 
   protected static final String REQUESTS_STATUS_KEY = "request_status";
   protected static final String REQUESTS_ID_KEY = "id";
@@ -163,6 +175,7 @@ public class ExecutionScheduleManager {
 
         }
 
+        @Override
         public X509Certificate[] getAcceptedIssuers() {
           return null;
         }
@@ -175,8 +188,8 @@ public class ExecutionScheduleManager {
       sc.init(null, trustAllCerts, new SecureRandom());
 
       //Install all trusting cert SSL context for jersey client
-      ClientConfig config = new DefaultClientConfig();
-      config.getProperties().put(HTTPSProperties.PROPERTY_HTTPS_PROPERTIES, new HTTPSProperties(
+      ClientConfig config = new ClientConfig();
+      /*config.getProperties().put(HTTPSProperties.PROPERTY_HTTPS_PROPERTIES, new HTTPSProperties(
         new HostnameVerifier() {
           @Override
           public boolean verify( String s, SSLSession sslSession ) {
@@ -184,24 +197,25 @@ public class ExecutionScheduleManager {
           }
         },
         sc
-      ));
+      ));*/
 
-      client = Client.create(config);
+      client = ClientBuilder.newBuilder().sslContext(sc).withConfig(config)
+              .build();
 
     } else {
-      client = Client.create();
+      client = ClientBuilder.newBuilder().build();
       pattern = "http://localhost:%s/";
       url = String.format(pattern, configuration.getClientApiPort());
     }
 
     this.ambariClient = client;
-    this.ambariWebResource = client.resource(url);
+    this.ambariWebResource = client.target(url);
 
     //Install auth filters
-    ClientFilter csrfFilter = new CsrfProtectionFilter("RequestSchedule");
-    ClientFilter tokenFilter = new InternalTokenClientFilter(tokenStorage);
-    ambariClient.addFilter(csrfFilter);
-    ambariClient.addFilter(tokenFilter);
+    ClientRequestFilter csrfFilter = new CsrfProtectionFilter("RequestSchedule");
+    ClientRequestFilter tokenFilter = new InternalTokenClientFilter(tokenStorage);
+    ambariWebResource.register(csrfFilter);
+    ambariWebResource.register(tokenFilter);
 
   }
 
@@ -275,13 +289,42 @@ public class ExecutionScheduleManager {
     return true;
   }
 
+
+  private long getFirstJobOrderId(RequestExecution requestExecution) throws AmbariException {
+    Long firstBatchOrderId = null;
+    Batch batch = requestExecution.getBatch();
+    if (batch != null) {
+      List<BatchRequest> batchRequests = batch.getBatchRequests();
+      if (batchRequests != null) {
+        Collections.sort(batchRequests);
+        ListIterator<BatchRequest> iterator = batchRequests.listIterator();
+        firstBatchOrderId = iterator.next().getOrderId();
+      }
+    }
+    if (firstBatchOrderId == null) {
+      throw new AmbariException("Can't schedule RequestExecution with no batches");
+    }
+    return firstBatchOrderId;
+  }
+
   /**
    * Persist jobs based on the request batch and create trigger for the first
    * job
    * @param requestExecution
    * @throws AmbariException
    */
-  public void scheduleBatch(RequestExecution requestExecution)
+  public void scheduleAllBatches(RequestExecution requestExecution) throws AmbariException {
+    Long firstBatchOrderId = getFirstJobOrderId(requestExecution);
+    scheduleBatch(requestExecution, firstBatchOrderId);
+  }
+
+  /**
+   * Persist jobs based on the request batches staring from the defined batch and create trigger for the first
+   * job
+   * @param requestExecution
+   * @throws AmbariException
+   */
+  public void scheduleBatch(RequestExecution requestExecution, long startingBatchOrderId)
     throws AmbariException {
 
     if (!isSchedulerAvailable()) {
@@ -297,14 +340,17 @@ public class ExecutionScheduleManager {
       LOG.error("Unable to determine scheduler state.", e);
       throw new AmbariException("Scheduler unavailable.");
     }
+    LOG.debug("Scheduling jobs starting from " + startingBatchOrderId);
 
     // Create and persist jobs based on batches
-    JobDetail firstJobDetail = persistBatch(requestExecution);
+    JobDetail firstJobDetail = persistBatch(requestExecution, startingBatchOrderId);
 
     if (firstJobDetail == null) {
       throw new AmbariException("Unable to schedule jobs. firstJobDetail = "
         + firstJobDetail);
     }
+
+    Integer failedCount = countFailedTasksBeforeStartingBatch(requestExecution, startingBatchOrderId);
 
     // Create a cron trigger for the first batch job
     // If no schedule is specified create simple trigger to fire right away
@@ -332,6 +378,7 @@ public class ExecutionScheduleManager {
           .withSchedule(cronSchedule(triggerExpression)
             .withMisfireHandlingInstructionFireAndProceed())
           .forJob(firstJobDetail)
+          .usingJobData(BatchRequestJob.BATCH_REQUEST_FAILED_TASKS_KEY, failedCount)
           .startAt(startDate)
           .endAt(endDate)
           .build();
@@ -351,6 +398,7 @@ public class ExecutionScheduleManager {
         .withIdentity(REQUEST_EXECUTION_TRIGGER_PREFIX + "-" +
           requestExecution.getId(), ExecutionJob.LINEAR_EXECUTION_TRIGGER_GROUP)
         .withSchedule(simpleSchedule().withMisfireHandlingInstructionFireNow())
+        .usingJobData(BatchRequestJob.BATCH_REQUEST_FAILED_TASKS_KEY, failedCount)
         .startNow()
         .build();
 
@@ -364,7 +412,35 @@ public class ExecutionScheduleManager {
     }
   }
 
-  private JobDetail persistBatch(RequestExecution requestExecution)
+  private Integer countFailedTasksBeforeStartingBatch(RequestExecution requestExecution, long startingBatchOrderId) throws AmbariException {
+    int result = 0;
+    Batch batch = requestExecution.getBatch();
+    if (batch != null) {
+      List<BatchRequest> batchRequests = batch.getBatchRequests();
+      if (batchRequests != null) {
+        Collections.sort(batchRequests);
+        for (BatchRequest batchRequest : batchRequests) {
+          if (batchRequest.getOrderId() >= startingBatchOrderId) break;
+
+          if (batchRequest.getRequestId() != null) {
+            BatchRequestResponse batchRequestResponse = getBatchRequestResponse(batchRequest.getRequestId(), requestExecution.getClusterName());
+            if (batchRequestResponse != null) {
+               result += batchRequestResponse.getFailedTaskCount() +
+                         batchRequestResponse.getAbortedTaskCount() +
+                         batchRequestResponse.getTimedOutTaskCount();
+            }
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Creates and stores the chain of BatchRequestJobs - quartz jobs - in order from the last order Id to the startingBatchOrderId
+   * @return the quartz job that corresponds to startingBatchOrderId
+   */
+  private JobDetail persistBatch(RequestExecution requestExecution, long startingBatchOrderId)
     throws  AmbariException {
 
     Batch batch = requestExecution.getBatch();
@@ -376,7 +452,8 @@ public class ExecutionScheduleManager {
         Collections.sort(batchRequests);
         ListIterator<BatchRequest> iterator = batchRequests.listIterator(batchRequests.size());
         String nextJobName = null;
-        while (iterator.hasPrevious()) {
+        long nextBatchOrderId = Integer.MAX_VALUE/2;
+        while (nextBatchOrderId != startingBatchOrderId && iterator.hasPrevious()) {
           BatchRequest batchRequest = iterator.previous();
 
           String jobName = getJobName(requestExecution.getId(),
@@ -409,6 +486,7 @@ public class ExecutionScheduleManager {
           }
 
           nextJobName = jobName;
+          nextBatchOrderId = batchRequest.getOrderId();
         }
       }
     }
@@ -421,14 +499,60 @@ public class ExecutionScheduleManager {
   }
 
   /**
-   * Delete and re-create all jobs and triggers
-   * Update schedule for a batch
+   * Pause/resume/abort request schedule and related jobs and triggers
    * @param requestExecution
    */
   public void updateBatchSchedule(RequestExecution requestExecution)
     throws AmbariException {
+    BatchRequest activeBatch = calculateActiveBatch(requestExecution);
+    if (activeBatch == null) {
+      LOG.warn("Ignoring RequestExecution status update since all batches has been executed");
+      return;
+    }
+    if (requestExecution.getStatus().equals(SCHEDULED.name())) {
+      scheduleBatch(requestExecution, activeBatch.getOrderId());
+    } else if (requestExecution.getStatus().equals(PAUSED.name()) ||
+               requestExecution.getStatus().equals(ABORTED.name())) {
+      LOG.info("Request execution status changed to " + requestExecution.getStatus() + " for request schedule "
+        + requestExecution.getId() + ". Deleting related jobs.");
+      deleteJobs(requestExecution, activeBatch.getOrderId());
+      Collection<Long> requestIDsToAbort = requestExecution.getBatchRequestRequestsIDs(activeBatch.getOrderId());
+      for (Long requestId : requestIDsToAbort) {
+        //might be null if the request is for not long running job
+        if (requestId == null) continue;
+        abortRequestById(requestExecution, requestId);
+      }
+    }
+  }
 
-    // TODO: Support delete and update if no jobs are running
+  /**
+   * Iterate through the batches and find the first one with not completed status, if all were completed return null
+   * @param requestExecution
+   * @return
+   */
+  private BatchRequest calculateActiveBatch(RequestExecution requestExecution) {
+    BatchRequest result = null;
+    Batch batch = requestExecution.getBatch();
+    if (batch != null) {
+      List<BatchRequest> batchRequests = batch.getBatchRequests();
+      if (batchRequests != null) {
+        Collections.sort(batchRequests);
+        ListIterator<BatchRequest> iterator = batchRequests.listIterator();
+        do {
+          result = iterator.next();
+        } while (iterator.hasNext() && result.getStatus() != null &&
+                 HostRoleStatus.getCompletedStates().contains(HostRoleStatus.valueOf(result.getStatus())) &&
+                 !HostRoleStatus.ABORTED.name().equals(result.getStatus()));
+      }
+    }
+
+    if (result != null && result.getStatus() != null &&
+      HostRoleStatus.getCompletedStates().contains(HostRoleStatus.valueOf(result.getStatus())) &&
+      !HostRoleStatus.ABORTED.name().equals(result.getStatus())) {
+      return null;
+    }
+
+    return result;
   }
 
   /**
@@ -483,6 +607,15 @@ public class ExecutionScheduleManager {
    * @throws AmbariException
    */
   public void deleteAllJobs(RequestExecution requestExecution) throws AmbariException {
+    Long firstBatchOrderId = getFirstJobOrderId(requestExecution);
+    deleteJobs(requestExecution, firstBatchOrderId);
+  }
+
+  /**
+   * Delete all jobs and triggers if possible.
+   * @throws AmbariException
+   */
+  public void deleteJobs(RequestExecution requestExecution, Long startingBatchOrderId) throws AmbariException {
     if (!isSchedulerAvailable()) {
       throw new AmbariException("Scheduler unavailable.");
     }
@@ -492,7 +625,11 @@ public class ExecutionScheduleManager {
     if (batch != null) {
       List<BatchRequest> batchRequests = batch.getBatchRequests();
       if (batchRequests != null) {
+        Collections.sort(batchRequests);
         for (BatchRequest batchRequest : batchRequests) {
+          //skip all before starting batch
+          if (batchRequest.getOrderId() < startingBatchOrderId) continue;
+
           String jobName = getJobName(requestExecution.getId(),
             batchRequest.getOrderId());
 
@@ -540,6 +677,8 @@ public class ExecutionScheduleManager {
         actionDBAccessor.setSourceScheduleForRequest(batchRequestResponse.getRequestId(), executionId);
       }
 
+      batchRequest.setRequestId(batchRequestResponse.getRequestId());
+
       return batchRequestResponse.getRequestId();
     } catch (Exception e) {
       throw new AmbariException("Exception occurred while performing request", e);
@@ -566,13 +705,40 @@ public class ExecutionScheduleManager {
 
   }
 
-  private BatchRequestResponse convertToBatchRequestResponse(ClientResponse clientResponse) {
+  protected RequestStatus abortRequestById(RequestExecution requestExecution, Long requestId) throws AmbariException {
+    LOG.debug("Aborting request " + requestId);
+    ResourceProvider provider =
+      AbstractControllerResourceProvider.getResourceProvider(Resource.Type.Request);
+
+    Map<String, Object> properties = new HashMap<>();
+    properties.put(RequestResourceProvider.REQUEST_CLUSTER_NAME_PROPERTY_ID, requestExecution.getClusterName());
+    properties.put(RequestResourceProvider.REQUEST_ABORT_REASON_PROPERTY_ID, "Request execution status changed to " + requestExecution.getStatus());
+    properties.put(RequestResourceProvider.REQUEST_ID_PROPERTY_ID, Long.toString(requestId));
+    properties.put(RequestResourceProvider.REQUEST_STATUS_PROPERTY_ID, HostRoleStatus.ABORTED.name());
+
+    org.apache.ambari.server.controller.spi.Request request = new RequestImpl(Collections.emptySet(),
+        Collections.singleton(properties), Collections.emptyMap(), null);
+
+    Predicate predicate =  new PredicateBuilder()
+        .property(RequestResourceProvider.REQUEST_CLUSTER_NAME_PROPERTY_ID)
+        .equals(requestExecution.getClusterName()).and()
+        .property(RequestResourceProvider.REQUEST_ID_PROPERTY_ID)
+        .equals(Long.toString(requestId)).toPredicate();
+
+    try{
+      return provider.updateResources(request, predicate);
+    } catch (Exception e) {
+     throw new AmbariException("Error while aborting the request.", e);
+    }
+  }
+
+  private BatchRequestResponse convertToBatchRequestResponse(Response clientResponse) {
     BatchRequestResponse batchRequestResponse = new BatchRequestResponse();
     int retCode = clientResponse.getStatus();
 
     batchRequestResponse.setReturnCode(retCode);
 
-    String responseString = clientResponse.getEntity(String.class);
+    String responseString = clientResponse.readEntity(String.class);
     LOG.debug("Processing API response: status={}, body={}", retCode, responseString);
     Map<String, Object> httpResponseMap;
     try {
@@ -638,6 +804,18 @@ public class ExecutionScheduleManager {
     return batchRequestResponse;
   }
 
+  public String getBatchRequestStatus(Long executionId, String clusterName) throws AmbariException {
+    Cluster cluster = clusters.getCluster(clusterName);
+    RequestExecution requestExecution = cluster.getAllRequestExecutions().get(executionId);
+
+    if (requestExecution == null) {
+      throw new AmbariException("Unable to find request schedule with id = "
+          + executionId);
+    }
+
+    return requestExecution.getStatus();
+  }
+
   public void updateBatchRequest(long executionId, long batchId, String clusterName,
                                  BatchRequestResponse batchRequestResponse,
                                  boolean statusOnly) throws AmbariException {
@@ -652,7 +830,7 @@ public class ExecutionScheduleManager {
 
     requestExecution.updateBatchRequest(batchId, batchRequestResponse, statusOnly);
   }
-
+/*
   protected BatchRequestResponse performUriRequest(String url, String body, String method) {
     ClientResponse response;
     try {
@@ -663,9 +841,34 @@ public class ExecutionScheduleManager {
     //Don't read response entity for logging purposes, it can be read only once from http stream
 
     return convertToBatchRequestResponse(response);
+  }*/
+
+  protected BatchRequestResponse performUriRequest(String url, String body, String method) {
+    Response response;
+    try {
+      WebTarget target = ClientBuilder.newClient().target(url);
+      Invocation.Builder invocationBuilder = target.request();
+
+      if (method.equalsIgnoreCase("GET")) {
+        response = invocationBuilder.get();
+      } else if (method.equalsIgnoreCase("POST")) {
+        response = invocationBuilder.post(Entity.entity(body, MediaType.APPLICATION_JSON));
+      } else if (method.equalsIgnoreCase("PUT")) {
+        response = invocationBuilder.put(Entity.entity(body, MediaType.APPLICATION_JSON));
+      } else if (method.equalsIgnoreCase("DELETE")) {
+        response = invocationBuilder.delete();
+      } else {
+        throw new IllegalArgumentException("Invalid HTTP method: " + method);
+      }
+
+    } catch (Exception e) {
+      response = null;
+    }
+
+    return convertToBatchRequestResponse(response);
   }
 
-  protected BatchRequestResponse performApiGetRequest(String relativeUri, boolean queryAllFields) {
+  /*protected BatchRequestResponse performApiGetRequest(String relativeUri, boolean queryAllFields) {
     WebResource webResource = extendApiResource(ambariWebResource, relativeUri);
     if (queryAllFields) {
       webResource = webResource.queryParam("fields", "*");
@@ -680,14 +883,63 @@ public class ExecutionScheduleManager {
   }
 
   protected BatchRequestResponse performApiRequest(String relativeUri, String body, String method, Integer userId) {
-    ClientResponse response;
+    Client client = ClientBuilder.newClient();
+    WebTarget target = client.target(relativeUri);
+    Response response;
     try {
-      response = extendApiResource(ambariWebResource, relativeUri)
-          .header(USER_ID_HEADER, userId).method(method, ClientResponse.class, body);
-    } catch (UniformInterfaceException e) {
-      response = e.getResponse();
+      Invocation.Builder invocationBuilder = target.request().header(USER_ID_HEADER, userId);
+      if (method.equalsIgnoreCase("GET")) {
+        response = invocationBuilder.get();
+      } else if (method.equalsIgnoreCase("POST")) {
+        response = invocationBuilder.post(Entity.entity(body, MediaType.APPLICATION_JSON));
+      } else if (method.equalsIgnoreCase("PUT")) {
+        response = invocationBuilder.put(Entity.entity(body, MediaType.APPLICATION_JSON));
+      } else if (method.equalsIgnoreCase("DELETE")) {
+        response = invocationBuilder.delete();
+      } else {
+        throw new IllegalArgumentException("Invalid HTTP method: " + method);
+      }
+    } catch (Exception e) {
+      response = null;
     }
+    return convertToBatchRequestResponse(response);
+  }*/
 
+  protected BatchRequestResponse performApiGetRequest(String relativeUri, boolean queryAllFields) {
+    WebTarget target = extendApiResource(ambariWebResource, relativeUri);
+    if (queryAllFields) {
+      target = target.queryParam("fields", "*");
+    }
+    Response response;
+    try {
+      response = target.request().get();
+    } catch (Exception e) {
+      LOG.error("Exception occurred during API request to {}: {}", relativeUri, e.getMessage(), e);
+      response = null;
+    }
+    return convertToBatchRequestResponse(response);
+  }
+
+  protected BatchRequestResponse performApiRequest(String relativeUri, String body, String method, Integer userId) {
+    WebTarget target = extendApiResource(ambariWebResource, relativeUri);
+    Response response;
+    try {
+      Invocation.Builder invocationBuilder = target.request().header(USER_ID_HEADER, userId);
+      if (method.equalsIgnoreCase("GET")) {
+        response = invocationBuilder.get();
+      } else if (method.equalsIgnoreCase("POST")) {
+        response = invocationBuilder.post(Entity.entity(body, MediaType.APPLICATION_JSON));
+      } else if (method.equalsIgnoreCase("PUT")) {
+        response = invocationBuilder.put(Entity.entity(body, MediaType.APPLICATION_JSON));
+      } else if (method.equalsIgnoreCase("DELETE")) {
+        response = invocationBuilder.delete();
+      } else {
+        throw new IllegalArgumentException("Invalid HTTP method: " + method);
+      }
+    } catch (Exception e) {
+      LOG.error("Exception occurred during API request to {}: {}", relativeUri, e.getMessage(), e);
+      response = null;
+    }
     return convertToBatchRequestResponse(response);
   }
 
@@ -712,13 +964,19 @@ public class ExecutionScheduleManager {
     }
 
     BatchSettings batchSettings = requestExecution.getBatch().getBatchSettings();
-    if (batchSettings != null
-        && batchSettings.getTaskFailureToleranceLimit() != null) {
-      return taskCounts.get(BatchRequestJob.BATCH_REQUEST_FAILED_TASKS_KEY) >
-        batchSettings.getTaskFailureToleranceLimit();
+
+    boolean result = false;
+    if (batchSettings != null) {
+      if (batchSettings.getTaskFailureToleranceLimit() != null) {
+        result = taskCounts.get(BatchRequestJob.BATCH_REQUEST_FAILED_TASKS_KEY) > batchSettings.getTaskFailureToleranceLimit();
+      }
+      if (batchSettings.getTaskFailureToleranceLimitPerBatch() != null) {
+        result = result || taskCounts.get(BatchRequestJob.BATCH_REQUEST_FAILED_TASKS_IN_CURRENT_BATCH_KEY) >
+            batchSettings.getTaskFailureToleranceLimitPerBatch();
+      }
     }
 
-    return false;
+    return result;
   }
 
   /**
@@ -802,16 +1060,51 @@ public class ExecutionScheduleManager {
 
   /**
    * Returns the absolute web resource with {@link #DEFAULT_API_PATH}
-   * @param webResource Ambari WebResource as provided by the client {@link #ambariWebResource}
+   * @param webTarget Ambari WebResource as provided by the client {@link #ambariWebResource}
    * @param relativeUri relative request URI
    * @return  Extended WebResource
    */
-  protected WebResource extendApiResource(WebResource webResource, String relativeUri) {
+  /* protected WebResource extendApiResource(WebResource webResource, String relativeUri) {
     WebResource result = webResource;
     if (StringUtils.isNotEmpty(relativeUri) && !CONTAINS_API_VERSION_PATTERN.matcher(relativeUri).matches()) {
       result = webResource.path(DEFAULT_API_PATH);
     }
     return result.path(relativeUri);
+  }*/
+
+  protected WebTarget extendApiResource(WebTarget webTarget, String relativeUri) {
+    WebTarget result = webTarget;
+    if (StringUtils.isNotEmpty(relativeUri) && !CONTAINS_API_VERSION_PATTERN.matcher(relativeUri).matches()) {
+      result = webTarget.path(DEFAULT_API_PATH);
+    }
+    return result.path(relativeUri);
+  }
+
+  /**
+   * Checks if scheduled request should be auto paused and updates the status to PAUSED if it does.
+   * For now the condition is following: the current status is SCHEDULED,
+   * it's the first batch and the pauseAfterFirstBatch flag is TRUE
+   */
+  public void pauseAfterBatchIfNeeded(long executionId, long batchId, String clusterName) throws AmbariException {
+    Cluster cluster = clusters.getCluster(clusterName);
+    RequestExecution requestExecution = cluster.getAllRequestExecutions().get(executionId);
+
+    if (requestExecution == null) {
+      throw new AmbariException("Unable to find request schedule with id = "
+        + executionId);
+    }
+
+    Batch batch = requestExecution.getBatch();
+    if (batch != null) {
+      BatchSettings batchSettings = batch.getBatchSettings();
+      if (batchSettings != null) {
+        if (SCHEDULED.name().equals(requestExecution.getStatus()) && getFirstJobOrderId(requestExecution) == batchId &&
+            batchSettings.isPauseAfterFirstBatch()) {
+          LOG.info("Auto pausing the scheduled request after first batch. Scheduled request ID : " + executionId);
+          requestExecution.updateStatus(PAUSED);
+        }
+      }
+    }
   }
 }
 

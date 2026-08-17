@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -20,6 +20,7 @@ Ambari Agent
 
 """
 
+from resource_management.libraries.execution_command import *
 from resource_management.libraries.functions import *
 from resource_management.libraries.resources import *
 from resource_management.libraries.providers import *

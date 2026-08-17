@@ -18,16 +18,18 @@
 
 package org.apache.ambari.server.controller;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import javax.annotation.Nullable;
+
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.RoleCommand;
 import org.apache.ambari.server.actionmanager.ActionManager;
 import org.apache.ambari.server.agent.ExecutionCommand;
-import org.apache.ambari.server.agent.stomp.dto.HostRepositories;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.api.services.LoggingService;
 import org.apache.ambari.server.controller.internal.DeleteStatusMetaData;
@@ -36,25 +38,30 @@ import org.apache.ambari.server.controller.logging.LoggingSearchPropertyProvider
 import org.apache.ambari.server.controller.metrics.MetricPropertyProviderFactory;
 import org.apache.ambari.server.controller.metrics.MetricsCollectorHAManager;
 import org.apache.ambari.server.controller.metrics.timeline.cache.TimelineMetricCacheProvider;
+import org.apache.ambari.server.controller.spi.ResourceAlreadyExistsException;
 import org.apache.ambari.server.events.AmbariEvent;
 import org.apache.ambari.server.events.MetadataUpdateEvent;
 import org.apache.ambari.server.events.TopologyUpdateEvent;
 import org.apache.ambari.server.events.publishers.AmbariEventPublisher;
 import org.apache.ambari.server.metadata.RoleCommandOrder;
 import org.apache.ambari.server.orm.entities.ExtensionLinkEntity;
+import org.apache.ambari.server.orm.entities.MpackEntity;
+import org.apache.ambari.server.orm.entities.StackEntity;
 import org.apache.ambari.server.scheduler.ExecutionScheduleManager;
 import org.apache.ambari.server.security.authorization.AuthorizationException;
 import org.apache.ambari.server.security.encryption.CredentialStoreService;
 import org.apache.ambari.server.security.ldap.LdapBatchDto;
 import org.apache.ambari.server.security.ldap.LdapSyncDto;
 import org.apache.ambari.server.stageplanner.RoleGraphFactory;
+import org.apache.ambari.server.state.BlueprintProvisioningState;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
 import org.apache.ambari.server.state.Config;
 import org.apache.ambari.server.state.ConfigHelper;
-import org.apache.ambari.server.state.Host;
+import org.apache.ambari.server.state.DesiredConfig;
 import org.apache.ambari.server.state.HostState;
 import org.apache.ambari.server.state.MaintenanceState;
+import org.apache.ambari.server.state.Module;
 import org.apache.ambari.server.state.Service;
 import org.apache.ambari.server.state.ServiceComponent;
 import org.apache.ambari.server.state.ServiceComponentFactory;
@@ -105,6 +112,29 @@ public interface AmbariManagementController {
       Set<ServiceComponentHostRequest> requests) throws AmbariException, AuthorizationException;
 
   /**
+   * Create the host component defined by the attributes in the given request object.
+   *
+   * @param requests  the request object which defines the host component to be created
+   *
+   * @param isBlueprintProvisioned  means host components will be created during blueprint deploy
+   *
+   * @throws AmbariException thrown if the host component cannot be created
+   */
+  void createHostComponents(
+      Set<ServiceComponentHostRequest> requests, boolean isBlueprintProvisioned) throws AmbariException, AuthorizationException;
+
+  /**
+   * Creates a configuration.
+   *
+   * @param request the request object which defines the configuration.
+   * @param refreshCluster should the cluster entity be refreshed from DB
+   * @throws AmbariException when the configuration cannot be created.
+   * @throws AuthorizationException when user is not authorized to perform operation.
+   */
+  ConfigurationResponse createConfiguration(ConfigurationRequest request, boolean refreshCluster)
+      throws AmbariException, AuthorizationException;
+
+  /**
    * Creates a configuration.
    *
    * @param request the request object which defines the configuration.
@@ -117,6 +147,13 @@ public interface AmbariManagementController {
   /**
    * Create cluster config
    * TODO move this method to Cluster? doesn't seem to be on its place
+   * @return config created
+   */
+  Config createConfig(Cluster cluster, StackId stackId, String type, Map<String, String> properties,
+                      String versionTag, Map<String, Map<String, String>> propertiesAttributes, boolean refreshCluster);
+
+  /**
+   * Create cluster config
    * @return config created
    */
   Config createConfig(Cluster cluster, StackId stackId, String type, Map<String, String> properties,
@@ -139,6 +176,15 @@ public interface AmbariManagementController {
    * @throws AmbariException when the members cannot be created.
    */
   void createMembers(Set<MemberRequest> requests) throws AmbariException;
+
+  /**
+   * Register the mpack defined by the attributes in the given request object.
+   *
+   * @param request the request object which defines the mpack to be created
+   * @throws AmbariException        thrown if the mpack cannot be created
+   * @throws AuthorizationException thrown if the authenticated user is not authorized to perform this operation
+   */
+  MpackResponse registerMpack(MpackRequest request) throws IOException, AuthorizationException, ResourceAlreadyExistsException;
 
 
   // ----- Read -------------------------------------------------------------
@@ -236,6 +282,28 @@ public interface AmbariManagementController {
    */
   RequestStatusResponse updateClusters(Set<ClusterRequest> requests,
                                               Map<String, String> requestProperties)
+      throws AmbariException, AuthorizationException;
+
+  /**
+   * Update the cluster identified by the given request object with the
+   * values carried by the given request object.
+   *
+   *
+   * @param requests          request objects which define which cluster to
+   *                          update and the values to set
+   * @param requestProperties request specific properties independent of resource
+   *
+   * @param fireAgentUpdates  should agent updates (configurations, metadata etc.) be fired inside
+   *
+   * @param refreshCluster  refreshes cluster entity after cluster configs update
+   *
+   * @return a track action response
+   *
+   * @throws AmbariException thrown if the resource cannot be updated
+   * @throws AuthorizationException thrown if the authenticated user is not authorized to perform this operation
+   */
+  RequestStatusResponse updateClusters(Set<ClusterRequest> requests, Map<String, String> requestProperties,
+                                       boolean fireAgentUpdates, boolean refreshCluster)
       throws AmbariException, AuthorizationException;
 
   /**
@@ -651,6 +719,11 @@ public interface AmbariManagementController {
   String getJavaHome();
 
   /**
+   * Getter for the java home, stored in ambari.properties
+   */
+  String getAmbariJavaHome();
+
+  /**
    * Getter for the jdk name, stored in ambari.properties
    */
   String getJDKName();
@@ -710,7 +783,8 @@ public interface AmbariManagementController {
    * @throws AmbariException if configuration tags can not be obtained
    */
   Map<String, Map<String,String>> findConfigurationTagsWithOverrides(
-        Cluster cluster, String hostName) throws AmbariException;
+          Cluster cluster, String hostName,
+          @Nullable Map<String, DesiredConfig> desiredConfigs) throws AmbariException;
 
   /**
    * Returns parameters for RCA database
@@ -911,11 +985,55 @@ public interface AmbariManagementController {
 
   void saveConfigGroupUpdate(ConfigGroupRequest configGroupRequest, ConfigGroupResponse configGroupResponse);
 
-  HostRepositories retrieveHostRepositories(Cluster cluster, Host host) throws AmbariException;
-
   MetadataUpdateEvent getClusterMetadataOnConfigsUpdate(Cluster cluster) throws AmbariException;
 
   TopologyUpdateEvent getAddedComponentsTopologyEvent(Set<ServiceComponentHostRequest> requests)
       throws AmbariException;
+
+  Map<String, BlueprintProvisioningState> getBlueprintProvisioningStates(Long clusterId, Long hostId) throws AmbariException;
+
+  /**
+   * Fetch the module info for a given mpack.
+   *
+   * @param mpackId
+   * @return List of modules
+   */
+  List<Module> getModules(Long mpackId);
+
+
+  /***
+   * Remove Mpack from the mpackMap and stackMap which is used to power the Mpack and Stack APIs.
+   * @param mpackEntity
+   * @param stackEntity
+   * @throws IOException
+   */
+  void removeMpack(MpackEntity mpackEntity, StackEntity stackEntity) throws IOException;
+
+  /**
+   * Creates serviceconfigversions and corresponding new configurations if it is an initial request
+   * OR
+   * Rollbacks to an existing serviceconfigversion if request specifies.
+   * @param requests
+   *
+   * @return
+   *
+   * @throws AmbariException
+   *
+   * @throws AuthorizationException
+   */
+  Set<ServiceConfigVersionResponse> createServiceConfigVersion(Set<ServiceConfigVersionRequest> requests) throws AmbariException, AuthorizationException;
+
+  /***
+   * Fetch all mpacks
+   * @return
+   */
+  Set<MpackResponse> getMpacks();
+
+  /***
+   * Fetch an mpack based on id
+   * @param mpackId
+   * @return
+   */
+  MpackResponse getMpack(Long mpackId);
 }
 

@@ -60,6 +60,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.gson.Gson;
 
 
@@ -99,8 +100,8 @@ public class ClusterResourceProvider extends AbstractControllerResourceProvider 
   public static final String CLUSTER_STATE_PROPERTY_ID = PropertyHelper.getPropertyId("Clusters","state");
 
   static final String BLUEPRINT = "blueprint";
-  private static final String SECURITY = "security";
-  static final String CREDENTIALS = "credentials";
+  public static final String SECURITY = "security";
+  public static final String CREDENTIALS = "credentials";
   private static final String QUICKLINKS_PROFILE = "quicklinks_profile";
   private static final String SESSION_ATTRIBUTES = "session_attributes";
 
@@ -132,39 +133,36 @@ public class ClusterResourceProvider extends AbstractControllerResourceProvider 
   /**
    * The key property ids for a cluster resource.
    */
-  protected static Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
+  protected static final Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
       .put(Resource.Type.Cluster, CLUSTER_NAME_PROPERTY_ID)
       .build();
 
   /**
    * The property ids for a cluster resource.
    */
-  protected static Set<String> propertyIds = new HashSet<>();
+  protected static final Set<String> propertyIds = ImmutableSet.<String>builder()
+    .add(CLUSTER_ID_PROPERTY_ID)
+    .add(CLUSTER_NAME_PROPERTY_ID)
+    .add(CLUSTER_VERSION_PROPERTY_ID)
+    .add(CLUSTER_PROVISIONING_STATE_PROPERTY_ID)
+    .add(CLUSTER_SECURITY_TYPE_PROPERTY_ID)
+    .add(CLUSTER_DESIRED_CONFIGS_PROPERTY_ID)
+    .add(CLUSTER_DESIRED_SERVICE_CONFIG_VERSIONS_PROPERTY_ID)
+    .add(CLUSTER_TOTAL_HOSTS_PROPERTY_ID)
+    .add(CLUSTER_HEALTH_REPORT_PROPERTY_ID)
+    .add(CLUSTER_CREDENTIAL_STORE_PROPERTIES_PROPERTY_ID)
+    .add(BLUEPRINT)
+    .add(SESSION_ATTRIBUTES)
+    .add(SECURITY)
+    .add(CREDENTIALS)
+    .add(QUICKLINKS_PROFILE)
+    .add(CLUSTER_STATE_PROPERTY_ID)
+    .build();
 
   /**
    * Used to serialize to/from json.
    */
   private static Gson jsonSerializer;
-
-
-  static {
-    propertyIds.add(CLUSTER_ID_PROPERTY_ID);
-    propertyIds.add(CLUSTER_NAME_PROPERTY_ID);
-    propertyIds.add(CLUSTER_VERSION_PROPERTY_ID);
-    propertyIds.add(CLUSTER_PROVISIONING_STATE_PROPERTY_ID);
-    propertyIds.add(CLUSTER_SECURITY_TYPE_PROPERTY_ID);
-    propertyIds.add(CLUSTER_DESIRED_CONFIGS_PROPERTY_ID);
-    propertyIds.add(CLUSTER_DESIRED_SERVICE_CONFIG_VERSIONS_PROPERTY_ID);
-    propertyIds.add(CLUSTER_TOTAL_HOSTS_PROPERTY_ID);
-    propertyIds.add(CLUSTER_HEALTH_REPORT_PROPERTY_ID);
-    propertyIds.add(CLUSTER_CREDENTIAL_STORE_PROPERTIES_PROPERTY_ID);
-    propertyIds.add(BLUEPRINT);
-    propertyIds.add(SESSION_ATTRIBUTES);
-    propertyIds.add(SECURITY);
-    propertyIds.add(CREDENTIALS);
-    propertyIds.add(QUICKLINKS_PROFILE);
-    propertyIds.add(CLUSTER_STATE_PROPERTY_ID);
-  }
 
 
   // ----- Constructors ----------------------------------------------------
@@ -468,16 +466,26 @@ public class ClusterResourceProvider extends AbstractControllerResourceProvider 
       String absCategory = PropertyHelper.getPropertyCategory(entry.getKey());
       String propName = PropertyHelper.getPropertyName(entry.getKey());
 
-      if (absCategory.startsWith(parentCategory + "/desired_service_config_version")) {
+      if (absCategory != null &&
+              absCategory.startsWith(parentCategory + "/desired_service_config_version")) {
         serviceConfigVersionRequest =
             (serviceConfigVersionRequest ==null ) ? new ServiceConfigVersionRequest() : serviceConfigVersionRequest;
 
-        if (propName.equals("service_name"))
-          serviceConfigVersionRequest.setServiceName(entry.getValue().toString());
-        else if (propName.equals("service_config_version"))
-          serviceConfigVersionRequest.setVersion(Long.valueOf(entry.getValue().toString()));
-        else if (propName.equals("service_config_version_note")) {
-          serviceConfigVersionRequest.setNote(entry.getValue().toString());
+        if (propName != null) {
+          switch (propName) {
+            case "service_name": {
+              serviceConfigVersionRequest.setServiceName(entry.getValue().toString());
+              break;
+            }
+            case "service_config_version": {
+              serviceConfigVersionRequest.setVersion(Long.valueOf(entry.getValue().toString()));
+              break;
+            }
+            case "service_config_version_note": {
+              serviceConfigVersionRequest.setNote(entry.getValue().toString());
+              break;
+            }
+          }
         }
       }
     }

@@ -22,7 +22,11 @@
       <a class="panel-toggle category-header" {{QAAttr "category-header"}}>
         <span class="category-name" {{QAAttr "category-name"}}>{{view.category.displayName}}</span>
         {{#if view.category.errorCount}}
-          <span class="badge badge-important">{{view.category.errorCount}}</span>
+          <span class="alert-badge" {{QAAttr "error-badge"}}>
+            <span class="counter label alerts-crit-count position-top">
+              {{view.category.errorCount}}
+            </span>
+          </span>
         {{/if}}
       </a>
     </h3>
@@ -30,7 +34,7 @@
 
   <div class="panel-body collapse in" {{bindAttr style="view.isCategoryBodyVisible"}} {{QAAttr "panel-body"}}>
   <div class="service-config-section">
-    <form class="form-horizontal" autocomplete="off">
+    <form autocomplete="off" class="form-horizontal">
       {{#each configData in view.categoryConfigs}}
         {{#unless configData.isInDefaultTheme}} {{! configs related to default themes should not be shown on the Advanced tab }}
           {{#if configData.isComparison}}
@@ -45,7 +49,7 @@
                     {{formatWordBreak configData.displayName}}
                     {{#if configData.isSecureConfig}}
                       <a href="javascript:void(null);">
-                        <i class="glyphicon glyphicon-lock" rel="tooltip" data-toggle="tooltip" title="security knob"></i>
+                        <i class="glyphicon glyphicon-lock" rel="tooltip" data-bs-toggle="tooltip" title="security knob"></i>
                       </a>
                     {{/if}}
                   </label>
@@ -66,7 +70,7 @@
                       {{view configData.viewClass serviceConfigBinding="configData" categoryConfigsAllBinding="view.categoryConfigsAll" }}
                       {{#if configData.hintMessage}}
                         <a class="icon-question-sign glyphicon glyphicon-blue" href="#"
-                           data-toggle="tooltip" {{bindAttr data-original-title="configData.hintMessage"}}></a>
+                           data-bs-toggle="tooltip" {{bindAttr data-original-title="configData.hintMessage"}}></a>
                       {{/if}}
                       {{view App.ControlsView serviceConfigPropertyBinding="configData"}}
                       {{#if configData.errorMessage}}

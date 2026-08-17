@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-'''
+"""
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
 distributed with this work for additional information
@@ -16,7 +16,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-'''
+"""
 
 # action commands
 SETUP_ACTION = "setup"
@@ -29,6 +29,7 @@ UPGRADE_ACTION = "upgrade"
 REFRESH_STACK_HASH_ACTION = "refresh-stack-hash"
 STATUS_ACTION = "status"
 SETUP_HTTPS_ACTION = "setup-https"
+SETUP_JDBC_ACTION = "setup-jdbc"
 LDAP_SETUP_ACTION = "setup-ldap"
 SETUP_SSO_ACTION = "setup-sso"
 LDAP_SYNC_ACTION = "sync-ldap"
@@ -49,3 +50,4 @@ UPGRADE_MPACK_ACTION = "upgrade-mpack"
 PAM_SETUP_ACTION = "setup-pam"
 MIGRATE_LDAP_PAM_ACTION = "migrate-ldap-pam"
 KERBEROS_SETUP_ACTION = "setup-kerberos"
+SETUP_TPROXY_ACTION = "setup-trusted-proxy"

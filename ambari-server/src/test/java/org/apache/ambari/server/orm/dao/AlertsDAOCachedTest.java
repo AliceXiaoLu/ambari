@@ -19,8 +19,8 @@ package org.apache.ambari.server.orm.dao;
 
 import java.util.List;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.orm.entities.AlertCurrentEntity;
@@ -278,7 +278,7 @@ public class AlertsDAOCachedTest {
 
       binder.bind(Configuration.class).toInstance(configuration);
 
-      PartialNiceMockBinder.newBuilder().addConfigsBindings().addAlertDefinitionBinding().build().configure(binder);
+      PartialNiceMockBinder.newBuilder().addConfigsBindings().addAlertDefinitionBinding().addLdapBindings().build().configure(binder);
     }
   }
 }

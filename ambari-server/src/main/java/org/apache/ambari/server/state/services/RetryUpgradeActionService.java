@@ -33,9 +33,9 @@ import org.apache.ambari.server.orm.dao.HostRoleCommandDAO;
 import org.apache.ambari.server.orm.entities.HostRoleCommandEntity;
 import org.apache.ambari.server.orm.entities.RepositoryVersionEntity;
 import org.apache.ambari.server.orm.entities.UpgradeEntity;
+import org.apache.ambari.server.stack.upgrade.Direction;
 import org.apache.ambari.server.state.Cluster;
 import org.apache.ambari.server.state.Clusters;
-import org.apache.ambari.server.state.stack.upgrade.Direction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -190,7 +190,7 @@ public class RetryUpgradeActionService extends AbstractScheduledService {
    * @param requestId Request Id to search tasks for.
    */
   @Transactional
-  void retryHoldingCommandsInRequest(Long requestId) {
+  public void retryHoldingCommandsInRequest(Long requestId) {
     if (requestId == null) {
       return;
     }
@@ -294,13 +294,17 @@ public class RetryUpgradeActionService extends AbstractScheduledService {
    * @param hrc Host Role Command entity
    */
   private void retryHostRoleCommand(HostRoleCommandEntity hrc) {
-    hrc.setStatus(HostRoleStatus.PENDING);
-    hrc.setStartTime(-1L);
-    // Don't change the original start time.
-    hrc.setEndTime(-1L);
-    hrc.setLastAttemptTime(-1L);
-
-    // This will invalidate the cache, as expected.
-    m_hostRoleCommandDAO.merge(hrc);
+    try {
+      hrc.setStatus(HostRoleStatus.PENDING);
+      hrc.setStartTime(-1L);
+      // Don't change the original start time.
+      hrc.setEndTime(-1L);
+      hrc.setLastAttemptTime(-1L);
+      // This will invalidate the cache, as expected.
+      m_hostRoleCommandDAO.merge(hrc);
+    } catch (Exception e) {
+      LOG.error("Error while updating hostRoleCommand. Entity: {}", hrc, e);
+      throw e;
+    }
   }
 }

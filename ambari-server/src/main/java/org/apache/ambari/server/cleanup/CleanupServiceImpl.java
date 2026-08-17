@@ -19,7 +19,7 @@ package org.apache.ambari.server.cleanup;
 
 import java.util.Set;
 
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 
 import org.apache.ambari.server.orm.dao.Cleanable;
 import org.slf4j.Logger;
@@ -73,6 +73,7 @@ public class CleanupServiceImpl implements CleanupService<TimeBasedCleanupPolicy
    * @param cleanupPolicy the policy based on which the cleanup is done
    * @return the number of affected rows
    */
+  @Override
   public CleanupResult cleanup(TimeBasedCleanupPolicy cleanupPolicy) {
     long affectedRows = 0;
     int errorCount = 0;

@@ -21,28 +21,29 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.OneToMany;
-import javax.persistence.OneToOne;
-import javax.persistence.QueryHint;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.QueryHint;
+import jakarta.persistence.Table;
+import jakarta.persistence.TableGenerator;
 
 import org.apache.ambari.server.actionmanager.HostRoleStatus;
-import org.apache.ambari.server.state.RepositoryType;
-import org.apache.ambari.server.state.stack.upgrade.Direction;
-import org.apache.ambari.server.state.stack.upgrade.UpgradeType;
+import org.apache.ambari.server.stack.upgrade.Direction;
+import org.apache.ambari.server.state.StackId;
+import org.apache.ambari.spi.RepositoryType;
+import org.apache.ambari.spi.upgrade.UpgradeType;
 import org.apache.commons.lang.builder.EqualsBuilder;
 
 import com.google.common.base.Objects;
@@ -126,6 +127,9 @@ public class UpgradeEntity {
   @Column(name="upgrade_package", nullable = false)
   private String upgradePackage;
 
+  @Column(name="upgrade_package_stack", nullable = false)
+  private String upgradePackStack;
+
   @Column(name="upgrade_type", nullable = false)
   @Enumerated(value = EnumType.STRING)
   private UpgradeType upgradeType;
@@ -181,8 +185,7 @@ public class UpgradeEntity {
    * Uni-directional relationship between an upgrade an all of the components in
    * that upgrade.
    */
-  @OneToMany(orphanRemoval=true, cascade = { CascadeType.ALL })
-  @JoinColumn(name = "upgrade_id")
+  @OneToMany(orphanRemoval=true, mappedBy = "upgrade", cascade = { CascadeType.ALL })
   private List<UpgradeHistoryEntity> upgradeHistory;
 
   /**
@@ -323,6 +326,21 @@ public class UpgradeEntity {
    */
   public void setUpgradePackage(String upgradePackage) {
     this.upgradePackage = upgradePackage;
+  }
+
+  /**
+   * @return the stack that owns the upgrade pack
+   */
+  public StackId getUpgradePackStackId() {
+    return null == upgradePackStack ? null : new StackId(upgradePackStack);
+  }
+
+  /**
+   * @param stackId
+   *          the stack that owns the upgrade pack
+   */
+  public void setUpgradePackStackId(StackId stackId) {
+    upgradePackStack = stackId.toString();
   }
 
   /**

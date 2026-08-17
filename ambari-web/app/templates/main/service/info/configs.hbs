@@ -28,7 +28,7 @@
             <span class="restart-components pull-right">&nbsp</span>
 
             <div class="btn-group pull-right">
-              <button type="button" class="btn dropdown-toggle btn-warning" data-toggle="dropdown">
+              <button type="button" class="btn dropdown-toggle btn-warning" data-bs-toggle="dropdown">
                 {{t hosts.host.details.needToRestart.button}}
                 <span class="caret"></span>
               </button>
@@ -36,7 +36,7 @@
                 <li class="restart-all-components">
                   <a href="#" {{action restartAllStaleConfigComponents target="controller"}}>{{t restart.service.all.affected}}</a>
                 </li>
-                {{#if view.rollingRestartSlaveComponentName}}
+                {{#if view.isRollingRestartSlaveComponentPresent}}
                   <li class="restart-slave-components">
                     <a href="#" {{action rollingRestartStaleConfigSlaveComponents view.rollingRestartSlaveComponentName target="controller"}}>{{view.rollingRestartActionName}}</a>
                   </li>

@@ -38,16 +38,16 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.EnumSet;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
-import javax.servlet.DispatcherType;
-import javax.servlet.SessionCookieConfig;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
+import jakarta.servlet.SessionCookieConfig;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.H2DatabaseCleaner;
 import org.apache.ambari.server.api.services.AmbariMetaInfo;
 import org.apache.ambari.server.checks.DatabaseConsistencyCheckHelper;
 import org.apache.ambari.server.configuration.Configuration;
+import org.apache.ambari.server.mpack.MpackManagerFactory;
 import org.apache.ambari.server.orm.DBAccessor;
 import org.apache.ambari.server.orm.GuiceJpaInitializer;
 import org.apache.ambari.server.orm.InMemoryDefaultTestModule;
@@ -63,7 +63,6 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlet.FilterHolder;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlets.GzipFilter;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.junit.After;
 import org.junit.Assert;
@@ -164,8 +163,6 @@ public class AmbariServerTest {
 
     handler.setMaxFormContentSize(-1);
     EasyMock.expectLastCall().once();
-    EasyMock.expect(handler.addFilter(GzipFilter.class, "/*",
-        EnumSet.of(DispatcherType.REQUEST))).andReturn(filter).once();
     EasyMock.expect(handler.getMimeTypes()).andReturn(new MimeTypes()).anyTimes();
     replay(handler, filter);
 
@@ -180,8 +177,6 @@ public class AmbariServerTest {
         EasyMock.createNiceMock(ServletContextHandler.class);
     final FilterHolder filter = EasyMock.createNiceMock(FilterHolder.class);
 
-    EasyMock.expect(handler.addFilter(GzipFilter.class, "/*",
-        EnumSet.of(DispatcherType.REQUEST))).andReturn(filter).once();
     filter.setInitParameter(anyObject(String.class),anyObject(String.class));
     EasyMock.expectLastCall().times(3);
     replay(handler, filter);
@@ -349,9 +344,10 @@ public class AmbariServerTest {
     return Guice.createInjector(new AbstractModule() {
       @Override
       protected void configure() {
-        PartialNiceMockBinder.newBuilder().addClustersBinding().build().configure(binder());
+        PartialNiceMockBinder.newBuilder().addClustersBinding().addLdapBindings().build().configure(binder());
 
         bind(StackManagerFactory.class).toInstance(createNiceMock(StackManagerFactory.class));
+        bind(MpackManagerFactory.class).toInstance(createNiceMock(MpackManagerFactory.class));
         bind(AmbariMetaInfo.class).toInstance(mockAmbariMetainfo);
         bind(DBAccessor.class).toInstance(mockDBDbAccessor);
         bind(OsFamily.class).toInstance(mockOSFamily);

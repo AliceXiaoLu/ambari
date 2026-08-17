@@ -22,25 +22,26 @@ import static org.apache.commons.lang.StringUtils.defaultString;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Objects;
 
-import javax.persistence.Basic;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.JoinTable;
-import javax.persistence.Lob;
-import javax.persistence.ManyToMany;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.OneToMany;
-import javax.persistence.OneToOne;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
+import jakarta.persistence.Basic;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.TableGenerator;
 
 @Entity
 @Table(name = "hosts")
@@ -285,7 +286,8 @@ public class HostEntity implements Comparable<HostEntity> {
 
     HostEntity that = (HostEntity) o;
 
-    return getHostId() == that.getHostId() && hostName.equals(that.hostName);
+    return Objects.equals(getHostId(), that.getHostId()) &&
+      Objects.equals(hostName, that.hostName);
   }
 
   /**
@@ -293,12 +295,7 @@ public class HostEntity implements Comparable<HostEntity> {
    */
   @Override
   public int hashCode() {
-    int result = null != getHostId() ? getHostId().hashCode() : 0;
-    if (null != hostName) {
-      result = 31 * result + hostName.hashCode();
-    }
-
-    return result;
+    return Objects.hash(getHostId(), hostName);
   }
 
   @Override

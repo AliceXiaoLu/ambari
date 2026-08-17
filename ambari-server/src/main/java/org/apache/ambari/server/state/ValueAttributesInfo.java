@@ -19,6 +19,8 @@
 package org.apache.ambari.server.state;
 
 import java.util.Collection;
+import java.util.Map;
+import java.util.Optional;
 
 import javax.xml.bind.annotation.XmlAccessType;
 import javax.xml.bind.annotation.XmlAccessorType;
@@ -27,13 +29,16 @@ import javax.xml.bind.annotation.XmlElementWrapper;
 import javax.xml.bind.annotation.XmlElements;
 
 import org.apache.ambari.server.controller.ApiModel;
-import org.codehaus.jackson.annotate.JsonProperty;
-import org.codehaus.jackson.map.annotate.JsonSerialize;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.swagger.annotations.ApiModelProperty;
 
 @XmlAccessorType(XmlAccessType.FIELD)
-@JsonSerialize(include=JsonSerialize.Inclusion.NON_NULL)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ValueAttributesInfo implements ApiModel {
   public static final String EMPTY_VALUE_VALID = "empty_value_valid";
   public static final String UI_ONLY_PROPERTY = "ui_only_property";
@@ -394,6 +399,19 @@ public class ValueAttributesInfo implements ApiModel {
     result = 31 * result + (copy != null ? copy.hashCode() : 0);
     result = 31 * result + (userGroupEntries != null ? userGroupEntries.hashCode() : 0);
     return result;
+  }
+
+  public Map<String, String> toMap(Optional<ObjectMapper> mapper) {
+    Map<String, String> map =
+      mapper.orElseGet(ObjectMapper::new).convertValue(this, new TypeReference<Map<String, String>>(){});
+    if ( !Boolean.parseBoolean(map.get("keyStore")) ) { // keyStore is declared as a primitive value instead of Boolean -> treat false as unset
+      map.remove("keyStore");
+    }
+    return map;
+  }
+
+  public static ValueAttributesInfo fromMap(Map<String, String> attributes, Optional<ObjectMapper> mapper) {
+    return mapper.orElseGet(ObjectMapper::new).convertValue(attributes, ValueAttributesInfo.class);
   }
 
   @Override

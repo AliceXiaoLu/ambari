@@ -18,12 +18,13 @@
 
 package org.apache.ambari.server.serveraction.kerberos;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 
 import org.apache.ambari.server.security.credential.PrincipalKeyCredential;
 import org.apache.ambari.server.utils.ShellCommandUtil;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.directory.shared.kerberos.codec.types.EncryptionType;
 import org.slf4j.Logger;
@@ -254,13 +255,17 @@ public class IPAKerberosOperationHandler extends KDCKerberosOperationHandler {
   }
 
   @Override
-  protected String[] getKinitCommand(String executableKinit, PrincipalKeyCredential credentials, String credentialsCache) {
-    return new String[]{
+  protected String[] getKinitCommand(String executableKinit, PrincipalKeyCredential credentials, String credentialsCache, Map<String, String> kerberosConfiguration) throws KerberosOperationException {
+    String [] command = new String[]{
         executableKinit,
         "-c",
         credentialsCache,
         credentials.getPrincipal()
     };
+    if (Arrays.asList(command).contains(null)){
+      throw new KerberosOperationException("Got a null value, can not create 'kinit' command");
+    }
+    return command;
   }
 
   @Override
@@ -279,8 +284,8 @@ public class IPAKerberosOperationHandler extends KDCKerberosOperationHandler {
     }
 
     String[] createKeytabFileCommand = (StringUtils.isEmpty(encryptionTypeSpec))
-        ? new String[]{executableIpaGetKeytab, "-s", getAdminServerHost(), "-p", principal, "-k", keytabFileDestinationPath}
-        : new String[]{executableIpaGetKeytab, "-s", getAdminServerHost(), "-e", encryptionTypeSpec, "-p", principal, "-k", keytabFileDestinationPath};
+        ? new String[]{executableIpaGetKeytab, "-s", getAdminServerHost(true), "-p", principal, "-k", keytabFileDestinationPath}
+        : new String[]{executableIpaGetKeytab, "-s", getAdminServerHost(true), "-e", encryptionTypeSpec, "-p", principal, "-k", keytabFileDestinationPath};
 
     ShellCommandUtil.Result result = executeCommand(createKeytabFileCommand);
     if (!result.isSuccessful()) {

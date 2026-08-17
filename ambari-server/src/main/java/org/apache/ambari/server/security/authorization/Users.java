@@ -26,16 +26,19 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 
-import javax.persistence.EntityManager;
-import javax.persistence.OptimisticLockException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.OptimisticLockException;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.configuration.Configuration;
 import org.apache.ambari.server.hooks.HookContextFactory;
 import org.apache.ambari.server.hooks.HookService;
 import org.apache.ambari.server.ldap.domain.AmbariLdapConfiguration;
+import org.apache.ambari.server.ldap.service.AmbariLdapConfigurationProvider;
 import org.apache.ambari.server.orm.dao.GroupDAO;
 import org.apache.ambari.server.orm.dao.MemberDAO;
 import org.apache.ambari.server.orm.dao.PermissionDAO;
@@ -61,7 +64,7 @@ import org.apache.ambari.server.security.ldap.LdapBatchDto;
 import org.apache.ambari.server.security.ldap.LdapGroupDto;
 import org.apache.ambari.server.security.ldap.LdapUserDto;
 import org.apache.ambari.server.security.ldap.LdapUserGroupMemberDto;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,7 +124,7 @@ public class Users {
   private PasswordEncoder passwordEncoder;
 
   @Inject
-  protected AmbariLdapConfiguration ldapConfiguration;
+  protected AmbariLdapConfigurationProvider ldapConfigurationProvider;
 
   @Inject
   protected Configuration configuration;
@@ -309,11 +312,28 @@ public class Users {
     userDAO.create(userEntity);
 
     // execute user initialization hook if required ()
-    hookServiceProvider.get().execute(hookContextFactory.createUserHookContext(validatedUserName));
+    executeUserHook(validatedUserName);
 
     return userEntity;
   }
 
+  /**
+   * Triggers the post user creation hook, if enabled
+   *
+   * @param username the username of the user to process
+   */
+  public void executeUserHook(String username) {
+    hookServiceProvider.get().execute(hookContextFactory.createUserHookContext(username));
+  }
+
+  /**
+   * Triggers the post user creation hook, if enabled
+   *
+   * @param userGroupsMap a map of user names to relevant groups
+   */
+  public void executeUserHook(Map<String, Set<String>> userGroupsMap) {
+    hookServiceProvider.get().execute(hookContextFactory.createBatchUserHookContext(userGroupsMap));
+  }
 
   /**
    * Removes a user from the Ambari database.
@@ -896,9 +916,20 @@ public class Users {
 
   private void processLdapAdminGroupMappingRules(Set<MemberEntity> membershipsToCreate) {
 
+    if (membershipsToCreate.isEmpty()) {
+      LOG.debug("There are no new memberships for which to process administrator group mapping rules.");
+      return;
+    }
+
+    AmbariLdapConfiguration ldapConfiguration = ldapConfigurationProvider.get();
+    if (ldapConfiguration == null) {
+      LOG.warn("The LDAP configuration is not available - no administrator group mappings will be processed.");
+      return;
+    }
+
     String adminGroupMappings = ldapConfiguration.groupMappingRules();
-    if (Strings.isNullOrEmpty(adminGroupMappings) || membershipsToCreate.isEmpty()) {
-      LOG.info("Nothing to do. LDAP admin group mappings: {}, Memberships to handle: {}", adminGroupMappings, membershipsToCreate.size());
+    if (Strings.isNullOrEmpty(adminGroupMappings)) {
+      LOG.debug("There are no administrator group mappings to be processed.");
       return;
     }
 
@@ -1218,22 +1249,21 @@ public class Users {
 
     if (userAuthenticationEntity != null) {
       if (userAuthenticationEntity.getAuthenticationType() == UserAuthenticationType.LOCAL) {
-        // If the authentication record represents a local password and the authenticated user is
-        // changing the password for himself, ensure the old key value matches the current key value
-        // If the authenticated user is can manager users and is not changing his own password, there
-        // is no need to check that the authenticated user knows the current password - just update it.
-        if (isSelf &&
-            (StringUtils.isEmpty(currentKey) || !passwordEncoder.matches(currentKey, userAuthenticationEntity.getAuthenticationKey()))) {
-          // The authenticated user is the same user as subject user and the correct current password
-          // was not supplied.
+
+        String expectedCurrentKey = isSelf
+          ? userAuthenticationEntity.getAuthenticationKey()
+          : getAuthenticatedUserLocalAuthenticationMethod().
+              orElseThrow(() -> new AmbariException("Authentication error")).getAuthenticationKey();
+
+        if (StringUtils.isEmpty(currentKey) || !passwordEncoder.matches(currentKey, expectedCurrentKey)) {
           throw new AmbariException("Wrong current password provided");
         }
 
-        validatePassword(newKey);
+        validatePassword(newKey, userAuthenticationEntity.getUser().getUserName(), userAuthenticationEntity.getFullAuthenticationKey());
 
         // If we get here the authenticated user is authorized to change the password for the subject
         // user and the correct current password was supplied (if required).
-        userAuthenticationEntity.setAuthenticationKey(passwordEncoder.encode(newKey));
+        userAuthenticationEntity.updateAuthenticationKey(passwordEncoder.encode(newKey), configuration.getPasswordPolicyHistoryCount());
       } else {
         // If we get here the authenticated user is authorized to change the key for the subject.
         userAuthenticationEntity.setAuthenticationKey(newKey);
@@ -1241,6 +1271,13 @@ public class Users {
 
       userAuthenticationDAO.merge(userAuthenticationEntity);
     }
+  }
+
+  private Optional<AuthenticationMethod> getAuthenticatedUserLocalAuthenticationMethod() {
+    User authenticatedUser = getUser(AuthorizationHelper.getAuthenticatedId());
+    return authenticatedUser.getAuthenticationMethods().stream()
+      .filter(am -> UserAuthenticationType.LOCAL.equals(am.getAuthenticationType()))
+      .findAny();
   }
 
   public void removeAuthentication(String username, Long authenticationId) {
@@ -1343,19 +1380,17 @@ public class Users {
     addAuthentication(userEntity,
         UserAuthenticationType.JWT,
         key,
-        new Validator() {
-          public void validate(UserEntity userEntity, String key) throws AmbariException {
-            List<UserAuthenticationEntity> authenticationEntities = userEntity.getAuthenticationEntities();
+            (user, authKey) -> {
+              List<UserAuthenticationEntity> authenticationEntities = user.getAuthenticationEntities();
 
-            // Ensure only one UserAuthenticationEntity exists for JWT for the user...
-            for (UserAuthenticationEntity entity : authenticationEntities) {
-              if ((entity.getAuthenticationType() == UserAuthenticationType.JWT) &&
-                  ((key == null) ? (entity.getAuthenticationKey() == null) : key.equals(entity.getAuthenticationKey()))) {
-                throw new AmbariException("The authentication type already exists for this user");
+              // Ensure only one UserAuthenticationEntity exists for JWT for the user...
+              for (UserAuthenticationEntity entity : authenticationEntities) {
+                if ((entity.getAuthenticationType() == UserAuthenticationType.JWT) &&
+                    ((authKey == null) ? (entity.getAuthenticationKey() == null) : authKey.equals(entity.getAuthenticationKey()))) {
+                  throw new AmbariException("The authentication type already exists for this user");
+                }
               }
-            }
-          }
-        },
+            },
         persist);
   }
 
@@ -1385,14 +1420,12 @@ public class Users {
     addAuthentication(userEntity,
         UserAuthenticationType.KERBEROS,
         principalName,
-        new Validator() {
-          public void validate(UserEntity userEntity, String key) throws AmbariException {
-            // Ensure no other authentication entries exist for the same principal...
-            if (!CollectionUtils.isEmpty(userAuthenticationDAO.findByTypeAndKey(UserAuthenticationType.KERBEROS, key))) {
-              throw new AmbariException("The authentication type already exists for this principal");
-            }
-          }
-        },
+            (user, key) -> {
+              // Ensure no other authentication entries exist for the same principal...
+              if (!CollectionUtils.isEmpty(userAuthenticationDAO.findByTypeAndKey(UserAuthenticationType.KERBEROS, key))) {
+                throw new AmbariException("The authentication type already exists for this principal");
+              }
+            },
         persist);
   }
 
@@ -1425,7 +1458,7 @@ public class Users {
   public void addLocalAuthentication(UserEntity userEntity, String password, boolean persist) throws AmbariException {
 
     // Ensure the password meets configured minimal requirements, if any
-    validatePassword(password);
+    validatePassword(password, userEntity.getUserName());
 
     // Encode the password..
     String encodedPassword = passwordEncoder.encode(password);
@@ -1433,18 +1466,16 @@ public class Users {
     addAuthentication(userEntity,
         UserAuthenticationType.LOCAL,
         encodedPassword,
-        new Validator() {
-          public void validate(UserEntity userEntity, String key) throws AmbariException {
-            List<UserAuthenticationEntity> authenticationEntities = userEntity.getAuthenticationEntities();
+            (user, key) -> {
+              List<UserAuthenticationEntity> authenticationEntities = user.getAuthenticationEntities();
 
-            // Ensure only one UserAuthenticationEntity exists for LOCAL for the user...
-            for (UserAuthenticationEntity entity : authenticationEntities) {
-              if (entity.getAuthenticationType() == UserAuthenticationType.LOCAL) {
-                throw new AmbariException("The authentication type already exists for this user");
+              // Ensure only one UserAuthenticationEntity exists for LOCAL for the user...
+              for (UserAuthenticationEntity entity : authenticationEntities) {
+                if (entity.getAuthenticationType() == UserAuthenticationType.LOCAL) {
+                  throw new AmbariException("The authentication type already exists for this user");
+                }
               }
-            }
-          }
-        },
+            },
         persist);
   }
 
@@ -1474,18 +1505,16 @@ public class Users {
     addAuthentication(userEntity,
         UserAuthenticationType.PAM,
         userName,
-        new Validator() {
-          public void validate(UserEntity userEntity, String key) throws AmbariException {
-            List<UserAuthenticationEntity> authenticationEntities = userEntity.getAuthenticationEntities();
+            (user, key) -> {
+              List<UserAuthenticationEntity> authenticationEntities = user.getAuthenticationEntities();
 
-            // Ensure only one UserAuthenticationEntity exists for PAM for the user...
-            for (UserAuthenticationEntity entity : authenticationEntities) {
-              if (entity.getAuthenticationType() == UserAuthenticationType.PAM) {
-                throw new AmbariException("The authentication type already exists for this user");
+              // Ensure only one UserAuthenticationEntity exists for PAM for the user...
+              for (UserAuthenticationEntity entity : authenticationEntities) {
+                if (entity.getAuthenticationType() == UserAuthenticationType.PAM) {
+                  throw new AmbariException("The authentication type already exists for this user");
+                }
               }
-            }
-          }
-        },
+            },
         persist);
   }
 
@@ -1515,19 +1544,17 @@ public class Users {
     addAuthentication(userEntity,
         UserAuthenticationType.LDAP,
         StringUtils.lowerCase(dn), // DNs are case-insensitive and are stored internally as the bytes of lowercase characters
-        new Validator() {
-          public void validate(UserEntity userEntity, String key) throws AmbariException {
-            List<UserAuthenticationEntity> authenticationEntities = userEntity.getAuthenticationEntities();
+            (user, key) -> {
+              List<UserAuthenticationEntity> authenticationEntities = user.getAuthenticationEntities();
 
-            // Ensure only one UserAuthenticationEntity exists for LDAP for the user...
-            for (UserAuthenticationEntity entity : authenticationEntities) {
-              if ((entity.getAuthenticationType() == UserAuthenticationType.LDAP) &&
-                  ((key == null) ? (entity.getAuthenticationKey() == null) : key.equalsIgnoreCase(entity.getAuthenticationKey()))) {
-                throw new AmbariException("The authentication type already exists for this user");
+              // Ensure only one UserAuthenticationEntity exists for LDAP for the user...
+              for (UserAuthenticationEntity entity : authenticationEntities) {
+                if ((entity.getAuthenticationType() == UserAuthenticationType.LDAP) &&
+                    ((key == null) ? (entity.getAuthenticationKey() == null) : key.equalsIgnoreCase(entity.getAuthenticationKey()))) {
+                  throw new AmbariException("The authentication type already exists for this user");
+                }
               }
-            }
-          }
-        },
+            },
         persist);
   }
 
@@ -1727,20 +1754,65 @@ public class Users {
   }
 
   /**
-   * Validates the password meets configured requirements.
+   * Validates the password meets configured requirements according ambari.properties.
+   *
    * <p>
-   * In the future this may be configurable. For now just make sure the password is not empty.
    *
    * @param password the password
-   * @return true if the password is valid; false otherwise
+   * @throws IllegalArgumentException if password does not meet the password policy requirements
    */
-  public boolean validatePassword(String password) throws AmbariException {
-    // TODO: validate the new password...
+  public void validatePassword(String password) {
     if (StringUtils.isEmpty(password)) {
-      throw new AmbariException("The new password does not meet the Ambari password requirements");
+      throw new IllegalArgumentException("The password does not meet the password policy requirements");
     }
+    String regexp = configuration.getPasswordPolicyRegexp();
+    if (!StringUtils.isEmpty(regexp) && (!Pattern.matches(regexp,password))) {
+      final String msg = "The password does not meet the Ambari user password policy : " + configuration.getPasswordPolicyDescription();
+      throw new IllegalArgumentException(msg);
+    }
+  }
 
-    return true;
+  /**
+   * Validates the password meets configured requirements according ambari.properties and it does not contain the username.
+   *
+   * <p>
+   *
+   * @param password the password
+   * @param userName the username
+   * @throws  IllegalArgumentException if password does not meet the password policy requirements
+   */
+  public void validatePassword(String password, String userName) {
+    validatePassword(password);
+    if (StringUtils.isNotEmpty(userName) && Pattern.compile(Pattern.quote(userName), Pattern.CASE_INSENSITIVE).matcher(password).find()) {
+      final String msg = "The password does not meet the Ambari user password policy : password cannot contain the username";
+      throw new IllegalArgumentException(msg);
+    }
+  }
+
+  /**
+   * Validates the password meets configured requirements according ambari.properties, does not contain the username and different from previous passwords
+   *
+   * <p>
+   *
+   * @param password the password
+   * @param userName the username
+   * @param authenticationKey the authenticationKey associated with previous passwords
+   * @throws  IllegalArgumentException if password does not meet the password policy requirements
+   */
+  public void validatePassword(String password, String userName, String authenticationKey) {
+    validatePassword(password, userName);
+    boolean isMatched = false;
+    String[] previousPasswords = StringUtils.split(authenticationKey, ",");
+    for (String previousPassword : previousPasswords) {
+      if (passwordEncoder.matches(password, previousPassword)) {
+        isMatched = true;
+        break;
+      }
+    }
+    if (isMatched) {
+      final String msg = "The password does not meet the Ambari user password policy : new password can not be same as previous " + configuration.getPasswordPolicyHistoryCount() + " passwords.";
+      throw new IllegalArgumentException(msg);
+    }
   }
 
   /**

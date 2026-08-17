@@ -224,11 +224,12 @@ public class Stage {
   void loadExecutionCommandWrappers() {
     for (Map.Entry<String, Map<String, HostRoleCommand>> hostRoleCommandEntry : hostRoleCommands.entrySet()) {
       String hostname = hostRoleCommandEntry.getKey();
-      commandsToSend.put(hostname, new ArrayList<>());
+      List<ExecutionCommandWrapper> wrappers = new ArrayList<>();
       Map<String, HostRoleCommand> roleCommandMap = hostRoleCommandEntry.getValue();
       for (Map.Entry<String, HostRoleCommand> roleCommandEntry : roleCommandMap.entrySet()) {
-        commandsToSend.get(hostname).add(roleCommandEntry.getValue().getExecutionCommandWrapper());
+        wrappers.add(roleCommandEntry.getValue().getExecutionCommandWrapper());
       }
+      commandsToSend.put(hostname, wrappers);
     }
   }
 
@@ -356,6 +357,7 @@ public class Stage {
     ExecutionCommand cmd = new ExecutionCommand();
     ExecutionCommandWrapper wrapper = ecwFactory.createFromCommand(cmd);
     hrc.setExecutionCommandWrapper(wrapper);
+    cmd.setClusterId(Long.toString(clusterId));
     cmd.setHostname(hostName);
     cmd.setClusterName(clusterName);
     cmd.setRequestAndStage(requestId, stageId);
@@ -489,16 +491,7 @@ public class Stage {
     }
     cmd.setCommandParams(cmdParams);
 
-    Map<String, Map<String, String>> configurations = new TreeMap<>();
-    cmd.setConfigurations(configurations);
-
-    Map<String, Map<String, Map<String, String>>> configurationAttributes = new TreeMap<>();
-    cmd.setConfigurationAttributes(configurationAttributes);
-
-    if (configTags == null) {
-      configTags = new TreeMap<>();
-    }
-    cmd.setConfigurationTags(configTags);
+    cmd.setConfigurations(new TreeMap<>());
 
     Map<String, String> roleParams = new HashMap<>();
     roleParams.put(ServerAction.ACTION_NAME, actionName);
@@ -539,11 +532,7 @@ public class Stage {
    * @return list of hosts
    */
   public synchronized List<String> getHosts() { // TODO: Check whether method should be synchronized
-    List<String> hlist = new ArrayList<>();
-    for (String h : hostRoleCommands.keySet()) {
-      hlist.add(h);
-    }
-    return hlist;
+    return new ArrayList<>(hostRoleCommands.keySet());
   }
 
   synchronized float getSuccessFactor(Role r) {

@@ -24,14 +24,13 @@ import static org.mockito.Matchers.anyBoolean;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import javax.persistence.EntityManager;
+import jakarta.persistence.EntityManager;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.Role;
@@ -164,7 +163,6 @@ public class FinalizeKerberosServerActionTest extends EasyMockSupport {
     expect(executionCommand.getCommandParams()).andReturn(commandParams).anyTimes();
     expect(executionCommand.getRoleCommand()).andReturn(RoleCommand.EXECUTE).anyTimes();
     expect(executionCommand.getRole()).andReturn(Role.AMBARI_SERVER_ACTION.name()).anyTimes();
-    expect(executionCommand.getConfigurationTags()).andReturn(Collections.emptyMap()).anyTimes();
     expect(executionCommand.getServiceName()).andReturn(RootComponent.AMBARI_SERVER.name()).anyTimes();
     expect(executionCommand.getTaskId()).andReturn(3L).anyTimes();
 
@@ -212,7 +210,7 @@ public class FinalizeKerberosServerActionTest extends EasyMockSupport {
         bind(KerberosHelper.class).toInstance(createMock(KerberosHelper.class));
         bind(Clusters.class).toInstance(clusters);
         bind(AuditLogger.class).toInstance(createNiceMock(AuditLogger.class));
-        bind(EntityManager.class).toProvider(EasyMock.createNiceMock(Provider.class));
+        bind(EntityManager.class).toProvider((Provider<? extends EntityManager>) EasyMock.createNiceMock(Provider.class));
       }
     });
   }

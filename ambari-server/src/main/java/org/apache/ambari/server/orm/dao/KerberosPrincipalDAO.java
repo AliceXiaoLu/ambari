@@ -19,13 +19,18 @@
 package org.apache.ambari.server.orm.dao;
 
 
+import java.util.ArrayList;
 import java.util.List;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.orm.RequiresSession;
+import org.apache.ambari.server.orm.entities.KerberosKeytabPrincipalEntity;
 import org.apache.ambari.server.orm.entities.KerberosPrincipalEntity;
+import org.apache.commons.collections4.CollectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.inject.Inject;
 import com.google.inject.Provider;
@@ -39,6 +44,7 @@ import com.google.inject.persist.Transactional;
 @Singleton
 public class KerberosPrincipalDAO {
 
+  private final static Logger LOG = LoggerFactory.getLogger(KerberosPrincipalDAO.class);
   /**
    * JPA entity manager
    */
@@ -63,8 +69,10 @@ public class KerberosPrincipalDAO {
    * @param service       a boolean value declaring whether the principal represents a service (true) or not )false).
    */
   @Transactional
-  public void create(String principalName, boolean service) {
-    create(new KerberosPrincipalEntity(principalName, service, null));
+  public KerberosPrincipalEntity create(String principalName, boolean service) {
+    KerberosPrincipalEntity kpe = new KerberosPrincipalEntity(principalName, service, null);
+    create(kpe);
+    return kpe;
   }
 
   /**
@@ -85,14 +93,9 @@ public class KerberosPrincipalDAO {
    */
   @Transactional
   public void remove(KerberosPrincipalEntity kerberosPrincipalEntity) {
-    if(kerberosPrincipalEntity != null) {
+    if (kerberosPrincipalEntity != null) {
       EntityManager entityManager = entityManagerProvider.get();
-      String principalName = kerberosPrincipalEntity.getPrincipalName();
-
-      kerberosPrincipalEntity = find(principalName);
-      if (kerberosPrincipalEntity != null) {
-        entityManager.remove(kerberosPrincipalEntity);
-      }
+      entityManager.remove(entityManager.merge(kerberosPrincipalEntity));
     }
   }
 
@@ -116,7 +119,6 @@ public class KerberosPrincipalDAO {
   public void refresh(KerberosPrincipalEntity kerberosPrincipalEntity) {
     entityManagerProvider.get().refresh(kerberosPrincipalEntity);
   }
-
 
   /**
    * Find a KerberosPrincipalEntity with the given principal name.
@@ -158,5 +160,35 @@ public class KerberosPrincipalDAO {
         remove(entity);
       }
     }
+  }
+
+  /**
+   * Determines if there are any references to the {@link KerberosPrincipalEntity} before attempting
+   * to remove it.  If there are any references to it, the entity will be not be removed.
+   *
+   * @param kerberosPrincipalEntity the entity
+   * @return <code>true</code>, if the entity was remove; <code>false</code> otherwise
+   */
+  public boolean removeIfNotReferenced(KerberosPrincipalEntity kerberosPrincipalEntity) {
+    if (kerberosPrincipalEntity != null) {
+      if (CollectionUtils.isNotEmpty(kerberosPrincipalEntity.getKerberosKeytabPrincipalEntities())) {
+        ArrayList<String> ids = new ArrayList<>();
+        for (KerberosKeytabPrincipalEntity entity : kerberosPrincipalEntity.getKerberosKeytabPrincipalEntities()) {
+          Long id = entity.getKkpId();
+
+          if (id != null) {
+            ids.add(String.valueOf(id));
+          }
+        }
+
+        LOG.info(String.format("principal entry for %s is still referenced by [%s]", kerberosPrincipalEntity.getPrincipalName(), String.join(",", ids)));
+      } else {
+        LOG.info(String.format("principal entry for %s is no longer referenced. It will be removed.", kerberosPrincipalEntity.getPrincipalName()));
+        remove(kerberosPrincipalEntity);
+        return true;
+      }
+    }
+
+    return false;
   }
 }

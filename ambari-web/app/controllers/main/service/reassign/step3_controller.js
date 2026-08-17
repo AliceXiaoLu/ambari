@@ -118,6 +118,15 @@ App.ReassignMasterWizardStep3Controller = Em.Controller.extend({
       }
     },
     {
+      componentName: 'TIMELINE_READER',
+      configs: {
+        'yarn-site': {
+          'yarn.timeline-service.reader.webapp.address': '<replace-value>:8198',
+          'yarn.timeline-service.reader.webapp.https.address': '<replace-value>:8199'
+        }
+      }
+    },
+    {
       componentName: 'OOZIE_SERVER',
       configs: {
         'oozie-site': {
@@ -317,7 +326,9 @@ App.ReassignMasterWizardStep3Controller = Em.Controller.extend({
     var urlParams = [];
 
     this.get('wizardController.serviceToConfigSiteMap')[componentName].forEach(function(site){
-      urlParams.push('(type=' + site + '&tag=' + data.Clusters.desired_configs[site].tag + ')');
+      if (data.Clusters.desired_configs[site]) {
+        urlParams.push('(type=' + site + '&tag=' + data.Clusters.desired_configs[site].tag + ')');
+      }
     });
 
     // specific cases for certain components
@@ -360,13 +371,14 @@ App.ReassignMasterWizardStep3Controller = Em.Controller.extend({
           this.get('propertiesToChange')[type].forEach(function (property) {
             var propertyName = property.name,
               stackProperty = App.configsCollection.getConfigByName(propertyName, type) || {},
+              displayName = self.getDisplayName(stackProperty.displayName, propertyName, type, serviceName),
               displayedProperty = App.ServiceConfigProperty.create({
                 name: propertyName,
-                displayName: propertyName,
                 fileName: type
               }, stackProperty, {
                 value: configs[type][propertyName],
                 category: serviceName,
+                displayName,
                 isEditable: Boolean(stackProperty.isEditable !== false && !property.isSecure)
               });
             displayedConfigs.push(displayedProperty);
@@ -379,6 +391,23 @@ App.ReassignMasterWizardStep3Controller = Em.Controller.extend({
         isLoaded: true
       });
     });
+  },
+
+  getDisplayName: function (stackDisplayName, propertyName, type, serviceName) {
+    let displayName = stackDisplayName || propertyName;
+    const keys = Em.keys(this.get('propertiesToChange'));
+    for (let i = 0; i < keys.length; i++) {
+      const fileName = keys[i],
+          service = App.config.get('serviceByConfigTypeMap')[fileName];
+      if (fileName !== type && service && service.get('serviceName') === serviceName) {
+        const configs = this.get('propertiesToChange')[fileName];
+        if (configs.someProperty('name', propertyName)) {
+          displayName = `${type}/${propertyName}`;
+          break;
+        }
+      }
+    }
+    return displayName;
   },
 
   onLoadConfigs: function (data) {

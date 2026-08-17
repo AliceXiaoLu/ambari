@@ -22,10 +22,10 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
 import org.apache.ambari.server.api.resources.ResourceInstance;
 import org.apache.ambari.server.api.resources.ResourceInstanceFactory;
@@ -55,6 +55,7 @@ public abstract class BaseService {
   public static final String MSG_INVALID_REQUEST = "Invalid request";
   public static final String MSG_CLUSTER_NOT_FOUND = "Cluster not found";
   public static final String MSG_CLUSTER_OR_HOST_NOT_FOUND = "Cluster or host not found";
+  public static final String MSG_VIEW_NOT_FOUND = "View not found";
   public static final String MSG_NOT_AUTHENTICATED = "Not authenticated";
   public static final String MSG_PERMISSION_DENIED = "Not permitted to perform the operation";
   public static final String MSG_SERVER_ERROR = "Internal server error";
@@ -223,6 +224,7 @@ public abstract class BaseService {
   protected ResultSerializer getResultSerializer(final MediaType mediaType) {
 
     final ResultSerializer serializer = getResultSerializer();
+    final JSON jsonParser = new JSON();
 
     if (mediaType.equals(MediaType.TEXT_PLAIN_TYPE)){
       return new ResultSerializer() {
@@ -240,12 +242,12 @@ public abstract class BaseService {
       return new ResultSerializer() {
         @Override
         public Object serialize(Result result) {
-          return JSON.parse(serializer.serialize(result).toString());
+          return jsonParser.parse(new JSON.StringSource(serializer.serialize(result).toString()));
         }
 
         @Override
         public Object serializeError(ResultStatus error) {
-          return JSON.parse(serializer.serializeError(error).toString());
+          return jsonParser.parse(new JSON.StringSource(serializer.serializeError(error).toString()));
         }
       };
     }

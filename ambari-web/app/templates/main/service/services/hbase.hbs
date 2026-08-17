@@ -22,7 +22,7 @@
     {{view view.dashboardMasterComponentView}}
     <div class="col-md-12">
       <div class="col-md-2">
-        {{#if view.hasMultipleMasterGroups}}
+        {{#if view.showComponentsTitleForNonMasters}}
           {{t dashboard.services.hdfs.summary.components}}
         {{/if}}
       </div>
@@ -64,6 +64,25 @@
             <div class="summary-label">
               <a
                 href="#" {{action filterHosts view.phoenixServerComponent}}>{{t dashboard.services.hbase.phoenixServers}}</a>
+            </div>
+          </div>
+        {{/if}}
+        {{! ThriftServers }}
+        {{#if view.isThriftServerCreated}}
+          <div {{bindAttr class=":row :component :col-md-3 view.thriftServerComponent.componentName"}}>
+            <div class="summary-value main-info">
+              <span>
+                {{#view App.ComponentLiveTextView liveComponentsBinding="view.service.thriftServersStarted" totalComponentsBinding="view.service.thriftServersTotal"}}
+                  {{#if App.router.clusterController.isServiceContentFullyLoaded}}
+                    {{view.liveComponents}}/{{view.totalComponents}}
+                  {{/if}}
+                {{/view}}
+              </span>
+              {{t common.live}}
+            </div>
+            <div class="summary-label">
+              <a
+                href="#" {{action filterHosts view.thriftServerComponent}}>{{t dashboard.services.hbase.thriftServers}}</a>
             </div>
           </div>
         {{/if}}

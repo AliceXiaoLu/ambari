@@ -20,8 +20,8 @@ package org.apache.ambari.server.orm.dao;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 
 import org.apache.ambari.server.AmbariException;
 import org.apache.ambari.server.controller.ExtensionLinkRequest;
@@ -65,7 +65,7 @@ public class ExtensionLinkDAO {
   @RequiresSession
   public List<ExtensionLinkEntity> find(ExtensionLinkRequest request) {
     if (request.getLinkId() != null) {
-      ExtensionLinkEntity entity = findById(new Long(request.getLinkId()));
+      ExtensionLinkEntity entity = findById(Long.parseLong(request.getLinkId()));
       List<ExtensionLinkEntity> list = new ArrayList<>();
       list.add(entity);
       return list;

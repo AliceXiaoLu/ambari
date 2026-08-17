@@ -18,31 +18,29 @@
 package org.apache.ambari.server.orm.entities;
 
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import javax.persistence.Basic;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.JoinColumns;
-import javax.persistence.NamedQueries;
-import javax.persistence.NamedQuery;
-import javax.persistence.OneToMany;
-import javax.persistence.OneToOne;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.Temporal;
-import javax.persistence.TemporalType;
-import javax.persistence.UniqueConstraint;
-import javax.persistence.Version;
+import jakarta.persistence.Basic;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
+import jakarta.persistence.NamedQueries;
+import jakarta.persistence.NamedQuery;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+import jakarta.persistence.TableGenerator;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
@@ -71,8 +69,7 @@ public class UserEntity {
 
   @Column(name = "create_time", nullable = false)
   @Basic
-  @Temporal(value = TemporalType.TIMESTAMP)
-  private Date createTime = new Date();
+  private long createTime;
 
   @Column(name = "active", nullable = false)
   private Integer active = 1;
@@ -211,11 +208,11 @@ public class UserEntity {
     this.localUsername = localUsername;
   }
 
-  public Date getCreateTime() {
+  public long getCreateTime() {
     return createTime;
   }
 
-  public void setCreateTime(Date createTime) {
+  public void setCreateTime(long createTime) {
     this.createTime = createTime;
   }
 
@@ -306,6 +303,14 @@ public class UserEntity {
         this.authenticationEntities.addAll(authenticationEntities);
       }
     }
+  }
+
+  /**
+   * Ensure the create time is set properly when the record is created.
+   */
+  @PrePersist
+  protected void onCreate() {
+    createTime = System.currentTimeMillis();
   }
 
   // ----- Object overrides --------------------------------------------------

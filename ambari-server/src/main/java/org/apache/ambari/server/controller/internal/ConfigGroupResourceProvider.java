@@ -62,7 +62,7 @@ import org.apache.ambari.server.state.ConfigHelper;
 import org.apache.ambari.server.state.Host;
 import org.apache.ambari.server.state.configgroup.ConfigGroup;
 import org.apache.ambari.server.state.configgroup.ConfigGroupFactory;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,7 +112,7 @@ public class ConfigGroupResourceProvider extends
   /**
    * The key property ids for a ConfigGroup resource.
    */
-  private static Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
+  private static final Map<Resource.Type, String> keyPropertyIds = ImmutableMap.<Resource.Type, String>builder()
       .put(Resource.Type.Cluster, CLUSTER_NAME)
       .put(Resource.Type.ConfigGroup, ID)
       .build();
@@ -120,7 +120,7 @@ public class ConfigGroupResourceProvider extends
   /**
    * The property ids for a ConfigGroup resource.
    */
-  private static Set<String> propertyIds = Sets.newHashSet(
+  private static final Set<String> propertyIds = Sets.newHashSet(
     CLUSTER_NAME,
     ID,
     GROUP_NAME,
@@ -248,7 +248,7 @@ public class ConfigGroupResourceProvider extends
       }
     }
 
-    RequestStatus status = updateResources(requests);
+    updateResources(requests);
 
     Set<Resource> associatedResources = new HashSet<>();
     for (ConfigGroupRequest configGroupRequest : requests) {
@@ -519,8 +519,6 @@ public class ConfigGroupResourceProvider extends
         cluster.getClusterName(), getManagementController().getAuthName(), configGroup.getName(), request.getId());
 
     cluster.deleteConfigGroup(request.getId());
-
-    m_configHelper.get().updateAgentConfigs(Collections.singleton(request.getClusterName()));
   }
 
   private void validateRequest(ConfigGroupRequest request) {
@@ -554,7 +552,6 @@ public class ConfigGroupResourceProvider extends
     ConfigGroupFactory configGroupFactory = getManagementController()
       .getConfigGroupFactory();
 
-    Set<String> updatedClusters = new HashSet<>();
     for (ConfigGroupRequest request : requests) {
 
       Cluster cluster;
@@ -642,10 +639,13 @@ public class ConfigGroupResourceProvider extends
         configGroup.getTag(), configGroup.getDescription(), null, null);
 
       configGroupResponses.add(response);
-      updatedClusters.add(cluster.getClusterName());
+      // a new config group only affects its member hosts; skip when it has none, otherwise an
+      // empty host list would fall back to updating every host in the cluster (see
+      // AgentConfigsHolder#updateData).
+      if (!hosts.isEmpty()) {
+        m_configHelper.get().updateAgentConfigs(cluster, new ArrayList<>(hosts.keySet()));
+      }
     }
-
-    m_configHelper.get().updateAgentConfigs(updatedClusters);
 
     return configGroupResponses;
   }
@@ -658,10 +658,10 @@ public class ConfigGroupResourceProvider extends
 
     Clusters clusters = getManagementController().getClusters();
 
-    Set<String> updatedClusters = new HashSet<>();
     for (ConfigGroupRequest request : requests) {
 
       Cluster cluster;
+      Set<Long> targetHostIds = new HashSet<>();
       try {
         cluster = clusters.getCluster(request.getClusterName());
       } catch (ClusterNotFoundException e) {
@@ -707,7 +707,12 @@ public class ConfigGroupResourceProvider extends
         serviceName = requestServiceName;
       }
 
-      int numHosts = (null != configGroup.getHosts()) ? configGroup.getHosts().size() : 0;
+      int numHosts = 0;
+      Map<Long, Host> prevHosts = configGroup.getHosts();
+      if (null != prevHosts && !prevHosts.isEmpty()) {
+        numHosts = prevHosts.size();
+        targetHostIds.addAll(prevHosts.keySet());
+      }
       configLogger.info("(configchange) Updating configuration group host membership or config value. cluster: '{}', changed by: '{}', " +
               "service_name: '{}', config group: '{}', tag: '{}', num hosts in config group: '{}', note: '{}'",
           cluster.getClusterName(), getManagementController().getAuthName(),
@@ -736,7 +741,9 @@ public class ConfigGroupResourceProvider extends
           if (hostEntity == null) {
             throw new HostNotFoundException(hostname);
           }
-          hosts.put(hostEntity.getHostId(), host);
+          Long hostId = hostEntity.getHostId();
+          hosts.put(hostId, host);
+          targetHostIds.add(hostId);
         }
       }
 
@@ -767,14 +774,17 @@ public class ConfigGroupResourceProvider extends
         versionTags.add(tagsMap);
         configGroupResponse.setVersionTags(versionTags);
         getManagementController().saveConfigGroupUpdate(request, configGroupResponse);
-        updatedClusters.add(cluster.getClusterName());
       } else {
         LOG.warn("Could not determine service name for config group {}, service config version not created",
             configGroup.getId());
       }
+      // only the affected hosts (previous + new members) need updating; skip when there are none,
+      // otherwise an empty host list would fall back to updating every host in the cluster (see
+      // AgentConfigsHolder#updateData).
+      if (!targetHostIds.isEmpty()) {
+        m_configHelper.get().updateAgentConfigs(cluster, new ArrayList<>(targetHostIds));
+      }
     }
-
-    m_configHelper.get().updateAgentConfigs(updatedClusters);
   }
 
   @SuppressWarnings("unchecked")

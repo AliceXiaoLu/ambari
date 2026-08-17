@@ -41,10 +41,10 @@ App.ServiceConfigPopoverSupport = Ember.Mixin.create({
   serviceConfig: null,
   attributeBindings:['readOnly'],
   isPopoverEnabled: true,
-  popoverPlacement: 'auto right',
+  popoverPlacement: 'right',
 
   didInsertElement: function () {
-    App.tooltip(this.$('[data-toggle=tooltip]'), {placement: 'top'});
+    App.tooltip(this.$('[data-bs-toggle=tooltip]'), {placement: 'top'});
     // if description for this serviceConfig not exist, then no need to show popover
     if (this.get('isPopoverEnabled') !== 'false' && this.get('serviceConfig.description')) {
       this.addPopover();
@@ -70,7 +70,7 @@ App.ServiceConfigPopoverSupport = Ember.Mixin.create({
         (this.get('serviceConfig.displayName') === this.get('serviceConfig.name')) ? '' : this.get('serviceConfig.name')
       ),
       content: this.get('serviceConfig.description'),
-      placement: this.get('popoverPlacement'),
+      placement: this.get('popoverPlacement')||"right",
       trigger: 'hover',
       html: true
     });
@@ -113,7 +113,6 @@ App.SupportsDependentConfigs = Ember.Mixin.create({
          }]);
       }
     }
-
     return $.Deferred().resolve().promise();
   },
 
@@ -171,6 +170,7 @@ App.ValueObserver = Em.Mixin.create(App.SupportsDependentConfigs, {
     if (this.get('selected') || this.get('serviceConfig.changedViaUndoValue')) {
       var self = this, config = this.get('serviceConfig'),
         controller = this.get('controller');
+      Em.set(config, 'didUserOverrideValue', true);
       delay(function(){
         self.sendRequestRorDependentConfigs(config, controller);
       }, 500);
@@ -187,6 +187,7 @@ App.WidgetValueObserver = Em.Mixin.create(App.ValueObserver, {
     if (this.get('selected')) {
       var self = this, config = this.get('config'),
         controller = this.get('controller');
+      Em.set(config, 'didUserOverrideValue', true);
       delay(function(){
         self.sendRequestRorDependentConfigs(config, controller);
       }, 500);
@@ -201,16 +202,48 @@ App.WidgetValueObserver = Em.Mixin.create(App.ValueObserver, {
 App.ServiceConfigCalculateId = Ember.Mixin.create({
   'data-qa': Ember.computed(function () {
     const config = this.get('config') && this.get('config.widget') ? this.get('config') : this.get('serviceConfig') || {};
-    return Em.get(config, 'name') || '';
+    const configName = Em.get(config, 'name') || '';
+    if (configName === 'content') {
+      return Em.get(config, 'id') || '';
+    }
+    return configName;
   })
 });
+
+App.ServiceConfigTitle = Ember.Mixin.create({
+  'title': Ember.computed(function () {
+    const title=Em.I18n.t('installer.controls.serviceConfigPopover.title').format(
+      this.get('serviceConfig.displayName'),
+      (this.get('serviceConfig.displayName') === this.get('serviceConfig.name')) ? '' : this.get('serviceConfig.name')
+    )
+    if(title){
+    return title.replace( /(<([^>]+)>)/ig, '')
+    }
+    return title
+  })
+});
+
+App.ServiceConfigContent = Ember.Mixin.create({
+  'data-bs-content': Ember.computed(function () {
+    const title=this.get('serviceConfig.description')
+    if(title){
+    return title.replace( /(<([^>]+)>)/ig, '')
+    }
+    return title
+  })
+});
+
 
 /**
  * Default input control
  * @type {*}
  */
-App.ServiceConfigTextField = Ember.TextField.extend(App.ServiceConfigPopoverSupport, App.ServiceConfigCalculateId, App.ValueObserver, {
+App.ServiceConfigTextField = Ember.TextField.extend(App.ServiceConfigPopoverSupport, App.ServiceConfigCalculateId, App.ValueObserver, App.ServiceConfigTitle, App.ServiceConfigContent, {
   classNames: ['form-control'],
+  attributeBindings:["data-bs-toggle","title","data-bs-placement","data-bs-trigger","data-bs-content"],
+  "data-bs-toggle":"popover",
+  "data-bs-placement":"left",
+  "data-bs-trigger":"hover",
   valueBinding: 'serviceConfig.value',
   classNameBindings: 'textFieldClassName',
   placeholderBinding: 'serviceConfig.placeholder',
@@ -296,16 +329,22 @@ App.ServiceConfigTextFieldWithUnit = Ember.View.extend(App.ServiceConfigPopoverS
  * Password control
  * @type {*}
  */
-App.ServiceConfigPasswordField = Ember.View.extend(App.ServiceConfigPopoverSupport, {
+App.ServiceConfigPasswordField = Ember.View.extend(App.ServiceConfigPopoverSupport, App.ServiceConfigCalculateId, App.ServiceConfigTitle, App.ServiceConfigContent, {
 
   serviceConfig: null,
 
   placeholder: Em.I18n.t('form.item.placeholders.typePassword'),
+  attributeBindings:["data-bs-toggle","title","data-bs-placement","data-bs-trigger","data-bs-content"],
+  "data-bs-toggle":"popover",
+  "data-bs-placement":"left",
+  "data-bs-trigger":"hover",
 
   templateName: require('templates/common/configs/widgets/service_config_password_field'),
 
   classNames: ['password-field-wrapper'],
 
+  
+  
   readOnly: Em.computed.not('serviceConfig.isEditable'),
 
   keyPress: function (event) {
@@ -424,6 +463,7 @@ var checkboxConfigView = Ember.Checkbox.extend(App.ServiceConfigPopoverSupport, 
     }, this);
     this.set('checked', this.get('serviceConfig.value') === this.get('trueValue'));
     this.propertyDidChange('checked');
+   
     Em.run.next(function () {
       if (self.$()) {
         self.propertyDidChange('elementForPopover');
@@ -1543,6 +1583,14 @@ App.BaseUrlTextField = Ember.TextField.extend({
    */
   defaultValue: '',
 
+  classNameBindings: ['defaultValueClass'],
+  
+  defaultValueClass: function() {
+    if(this.get('repository'))
+    return this.get('repository').repoId
+  return ""
+  }.property('defaultValue'),
+
   /**
    *  validate base URL
    */
@@ -1573,5 +1621,9 @@ App.BaseUrlTextField = Ember.TextField.extend({
    */
   restoreValue: function () {
     this.set('value', this.get('defaultValue'));
+    //Force the rerender
+    if(document&&this.get('repository')){
+      document.getElementsByClassName(this.get('repository').repoId).value=this.get('defaultValue')
+    }
   }
 });

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Licensed to the Apache Software Foundation (ASF) under one
 or more contributor license agreements.  See the NOTICE file
@@ -17,20 +18,22 @@ limitations under the License.
 
 """
 
-from resource_management import *
-from shared_initialization import *
+from shared_initialization import setup_users, setup_hadoop_env, setup_java, setup_env
+from resource_management import Hook
+
 
 class BeforeAnyHook(Hook):
-
   def hook(self, env):
     import params
+
     env.set_params(params)
 
     setup_users()
-    if params.has_namenode or params.dfs_type == 'HCFS':
+    if params.has_hdfs_clients or params.dfs_type == "HCFS":
       setup_hadoop_env()
+    setup_env()
     setup_java()
+
 
 if __name__ == "__main__":
   BeforeAnyHook().execute()
-

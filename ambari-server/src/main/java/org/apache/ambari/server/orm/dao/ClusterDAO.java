@@ -19,14 +19,15 @@
 package org.apache.ambari.server.orm.dao;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
-import javax.persistence.EntityManager;
-import javax.persistence.NoResultException;
-import javax.persistence.TypedQuery;
-import javax.persistence.criteria.CriteriaBuilder;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Root;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.NoResultException;
+import jakarta.persistence.TypedQuery;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Root;
 
 import org.apache.ambari.server.orm.RequiresSession;
 import org.apache.ambari.server.orm.entities.ClusterConfigEntity;
@@ -223,6 +224,9 @@ public class ClusterDAO {
   @RequiresSession
   public List<ClusterConfigEntity> getLatestConfigurationsWithTypes(long clusterId, StackId stackId, Collection<String> configTypes) {
     StackEntity stackEntity = stackDAO.find(stackId.getStackName(), stackId.getStackVersion());
+    if (configTypes.isEmpty()) {
+      return Collections.emptyList();
+    }
     return daoUtils.selectList(
       entityManagerProvider.get()
       .createNamedQuery("ClusterConfigEntity.findLatestConfigsByStackWithTypes", ClusterConfigEntity.class)
@@ -380,6 +384,15 @@ public class ClusterDAO {
   }
 
   /**
+   * Merge the specified entities into the current persistence context.
+   * @param clusterConfigEntities list of cluster configs to merge (not {@code null}).
+   */
+  @Transactional
+  public void merge(Collection<ClusterConfigEntity> clusterConfigEntities) {
+    merge(clusterConfigEntities, false);
+  }
+
+  /**
    * Merge the specified entity into the current persistence context.
    *
    * @param clusterConfigEntity
@@ -397,6 +410,23 @@ public class ClusterDAO {
       entityManager.flush();
     }
     return clusterConfigEntityRes;
+  }
+
+  /**
+   * Merge the specified list of cluster config entities into the current persistence context.
+   * @param clusterConfigEntities the entity to merge (not {@code null}).
+   * @param flush if {@code true} then {@link EntityManager#flush()} will be invoked
+   *              immediately after the merge.
+   */
+  @Transactional
+  public void merge(Collection<ClusterConfigEntity> clusterConfigEntities, boolean flush) {
+    EntityManager entityManager = entityManagerProvider.get();
+    for (ClusterConfigEntity clusterConfigEntity : clusterConfigEntities) {
+      entityManager.merge(clusterConfigEntity);
+    }
+    if(flush) {
+      entityManager.flush();
+    }
   }
 
   @Transactional

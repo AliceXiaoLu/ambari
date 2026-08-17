@@ -25,11 +25,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
-import javax.persistence.criteria.CriteriaQuery;
-import javax.persistence.criteria.Order;
-import javax.persistence.metamodel.SingularAttribute;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Order;
+import jakarta.persistence.metamodel.SingularAttribute;
 
 import org.apache.ambari.server.actionmanager.ActionManager;
 import org.apache.ambari.server.actionmanager.HostRoleStatus;
@@ -44,7 +44,10 @@ import org.apache.ambari.server.orm.entities.HostRoleCommandEntity;
 import org.apache.ambari.server.orm.entities.StageEntity;
 import org.apache.ambari.server.orm.entities.StageEntityPK;
 import org.apache.ambari.server.orm.entities.StageEntity_;
+import org.apache.ambari.server.orm.helpers.SQLConstants;
+import org.apache.ambari.server.orm.helpers.SQLOperations;
 import org.apache.ambari.server.utils.StageUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.eclipse.persistence.config.HintValues;
 import org.eclipse.persistence.config.QueryHints;
 
@@ -173,16 +176,20 @@ public class StageDAO {
   @RequiresSession
   public Map<Long, String> findRequestContext(List<Long> requestIds) {
     Map<Long, String> resultMap = new HashMap<>();
-    if (requestIds != null && !requestIds.isEmpty()) {
+    if (CollectionUtils.isNotEmpty(requestIds)) {
       TypedQuery<StageEntity> query = entityManagerProvider.get()
         .createQuery("SELECT stage FROM StageEntity stage WHERE " +
           "stage.requestId IN (SELECT DISTINCT s.requestId FROM StageEntity s " +
           "WHERE s.requestId IN ?1)", StageEntity.class);
-      List<StageEntity> result = daoUtils.selectList(query, requestIds);
-      if (result != null && !result.isEmpty()) {
-        for (StageEntity entity : result) {
-          resultMap.put(entity.getRequestId(), entity.getRequestContext());
-        }
+
+      List<StageEntity> result = new ArrayList<>();
+      SQLOperations.batch(requestIds, SQLConstants.IN_ARGUMENT_MAX_SIZE, (chunk, currentBatch, totalBatches, totalSize) -> {
+        result.addAll(daoUtils.selectList(query, chunk));
+        return 0;
+      });
+
+      for (StageEntity entity : result) {
+        resultMap.put(entity.getRequestId(), entity.getRequestContext());
       }
     }
     return resultMap;
@@ -239,7 +246,7 @@ public class StageDAO {
     PredicateHelper.visit(predicate, visitor);
 
     CriteriaQuery<StageEntity> query = visitor.getCriteriaQuery();
-    javax.persistence.criteria.Predicate jpaPredicate = visitor.getJpaPredicate();
+    jakarta.persistence.criteria.Predicate jpaPredicate = visitor.getJpaPredicate();
 
     if (jpaPredicate != null) {
       query.where(jpaPredicate);
@@ -336,7 +343,7 @@ public class StageDAO {
 
   /**
    * The {@link org.apache.ambari.server.orm.dao.StageDAO.StagePredicateVisitor} is used to convert an Ambari
-   * {@link org.apache.ambari.server.controller.spi.Predicate} into a JPA {@link javax.persistence.criteria.Predicate}.
+   * {@link org.apache.ambari.server.controller.spi.Predicate} into a JPA {@link jakarta.persistence.criteria.Predicate}.
    */
   private final class StagePredicateVisitor extends
       JpaPredicateVisitor<StageEntity> {

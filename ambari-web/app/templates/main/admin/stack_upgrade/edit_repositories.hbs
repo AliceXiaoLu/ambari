@@ -38,12 +38,14 @@
           <table class="table table-condensed no-borders inner-table">
             <tbody>
               {{#each repository in os.repositories}}
-                <tr {{bindAttr class="repository.repoName"}}>
-                  <td class="col-md-2">{{repository.repoName}}</td>
-                  <td class="col-md-8">
-                    <div {{bindAttr class="repository.hasError:error :form-group"}}>{{view App.BaseUrlTextField repositoryBinding="repository" disabledBinding="view.content.useRedhatSatellite"}}</div>
-                  </td>
-                </tr>
+                {{#if repository.showRepo}}
+                  <tr {{bindAttr class="repository.repoName"}}>
+                    <td class="col-md-2">{{repository.repoName}}</td>
+                    <td class="col-md-8">
+                      <div {{bindAttr class="repository.hasError:error :form-group"}}>{{view App.BaseUrlTextField repositoryBinding="repository" disabledBinding="view.content.useRedhatSatellite"}}</div>
+                    </td>
+                  </tr>
+                {{/if}}
               {{/each}}
             </tbody>
           </table>
@@ -57,7 +59,7 @@
   {{#view view.skipCheckBox labelTranslate="installer.step1.advancedRepo.skipValidation.message"
     checkedBinding="view.parentView.skipValidation"}}
     <i class="glyphicon glyphicon-question-sign" rel="skip-validation-tooltip"
-       data-toggle="tooltip" {{translateAttr title="installer.step1.advancedRepo.skipValidation.tooltip"}}>
+       data-bs-toggle="tooltip" {{translateAttr title="installer.step1.advancedRepo.skipValidation.tooltip"}}>
      </i>
   {{/view}}
 </div>
@@ -66,7 +68,7 @@
     labelTranslate="installer.step1.advancedRepo.useRedhatSatellite.message"
     checkedBinding="view.content.useRedhatSatellite"}}
     <i class="glyphicon glyphicon-question-sign" rel="use-redhat-tooltip"
-       data-toggle="tooltip" {{translateAttr title="installer.step1.advancedRepo.useRedhatSatellite.tooltip"}}>
+       data-bs-toggle="tooltip" {{translateAttr title="installer.step1.advancedRepo.useRedhatSatellite.tooltip"}}>
     </i>
    {{/view}}
 </div>

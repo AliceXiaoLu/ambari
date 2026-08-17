@@ -28,7 +28,7 @@
       {{/isAuthorized}}
     {{else}}
       <i rel='componentHealthTooltip'
-        {{bindAttr class="view.statusClass view.statusIconClass :components-health"
+        {{bindAttr class="glyphicon view.statusClass view.statusIconClass :components-health"
                    data-original-title="view.componentTextStatus"}}></i>
     {{/if}}
   </span>
@@ -47,9 +47,9 @@
 <td class="component-name-block">
   <span>
     {{#if component.displayNameAdvanced}}
-      <span {{bindAttr title="component.displayNameAdvanced"}}>{{component.getDisplayNameAdvanced}}&nbsp;/</span>
+      <span rel="componentNameTooltip" {{bindAttr data-original-title="component.displayNameAdvanced"}}>{{component.getDisplayNameAdvanced}}&nbsp;/</span>
     {{else}}
-      <span {{bindAttr title="component.displayName"}}>{{component.getDisplayName}}&nbsp;/</span>
+      <span rel="componentNameTooltip" {{bindAttr data-original-title="component.displayName"}}>{{component.getDisplayName}}&nbsp;/</span>
     {{/if}}
     <span class="hidden-lg"><br/></span>
     <a href="#" {{action routeToService component.service}} {{bindAttr title="component.service.displayName"}}>
@@ -68,7 +68,7 @@
 <td class="align-center">
   {{#havePermissions "SERVICE.DECOMMISSION_RECOMMISSION"}}
     <div class="dropdown">
-      <a {{bindAttr class=":dropdown-toggle view.isDisabled:disabled"}} data-toggle="dropdown" href="javascript:void(null)">
+      <a {{bindAttr class=":dropdown-toggle view.isDisabled:disabled"}} data-bs-toggle="dropdown" href="javascript:void(null)">
         <i class="glyphicon glyphicon-option-horizontal action-icon"></i>
       </a>
       {{#unless isDisabled}}
@@ -78,7 +78,7 @@
           <ul class="dropdown-menu">
             <li>
               <a href="javascript:void(null)" data-toggle="modal"
-                {{action "refreshComponentConfigs" view.content target="controller"}}>
+                {{action "refreshConfigs" view.content target="controller"}}>
                 {{t hosts.host.details.refreshConfigs}}
               </a>
             </li>

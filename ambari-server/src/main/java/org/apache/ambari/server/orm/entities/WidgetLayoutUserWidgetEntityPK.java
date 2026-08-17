@@ -18,9 +18,10 @@
 package org.apache.ambari.server.orm.entities;
 
 import java.io.Serializable;
+import java.util.Objects;
 
-import javax.persistence.Column;
-import javax.persistence.Id;
+import jakarta.persistence.Column;
+import jakarta.persistence.Id;
 
 public class WidgetLayoutUserWidgetEntityPK  implements Serializable {
 
@@ -56,10 +57,8 @@ public class WidgetLayoutUserWidgetEntityPK  implements Serializable {
 
     WidgetLayoutUserWidgetEntityPK that = (WidgetLayoutUserWidgetEntityPK) o;
 
-    if (widgetLayoutId != that.widgetLayoutId) return false;
-    if (userWidgetId != that.userWidgetId) return false;
-
-    return true;
+    return Objects.equals(widgetLayoutId, that.widgetLayoutId) &&
+      Objects.equals(userWidgetId, that.userWidgetId);
   }
 
   @Override
